@@ -17,7 +17,7 @@ Vite + React + TypeScript, tiszta SVG vászon, külső rajz-könyvtár nélkül.
   A szín alapból a busz típusából adódik (táp=piros, föld=szürke, I2C=zöld, SPI=narancs,
   UART=lila, I2S=rózsaszín, PWM=sárga, analóg=cián).
 - **Mentés / betöltés** — automatikus mentés `localStorage`-ba; JSON **export/import**
-  fájlba; valamint **kép-export SVG-be és PNG-be**.
+  fájlba; valamint **kép-export SVG-be, PNG-be és (vektoros) PDF-be**.
 - **Undo** (Ctrl/Cmd+Z), **törlés** (Delete/Backspace), **mégse** (Esc).
 
 ## Kezdő komponens-készlet

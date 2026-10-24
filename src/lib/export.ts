@@ -19,6 +19,12 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** Az exportált kép teljes mérete (tartalom + margó). */
+function svgSize(project: Project): { vw: number; vh: number } {
+  const b = contentBounds(project);
+  return { vw: b.width + PAD * 2, vh: b.height + PAD * 2 };
+}
+
 /** Teljes, önálló SVG markup a projektből. */
 export function buildSvg(project: Project): string {
   const b = contentBounds(project);
@@ -97,9 +103,7 @@ export function exportSvg(project: Project): void {
 export function exportPng(project: Project, scale = 2): Promise<void> {
   return new Promise((resolve, reject) => {
     const svg = buildSvg(project);
-    const b = contentBounds(project);
-    const vw = b.width + PAD * 2;
-    const vh = b.height + PAD * 2;
+    const { vw, vh } = svgSize(project);
 
     const url =
       "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
@@ -128,4 +132,38 @@ export function exportPng(project: Project, scale = 2): Promise<void> {
     img.onerror = () => reject(new Error("SVG betöltés sikertelen"));
     img.src = url;
   });
+}
+
+/**
+ * Vektoros PDF export: a buildSvg() SVG-jét valódi DOM-elembe parse-oljuk,
+ * majd a svg2pdf.js vektorosan a jsPDF lapra rajzolja (nem raszter). A nehéz
+ * könyvtárakat dinamikusan töltjük, hogy ne hízlalják az alap bundle-t.
+ */
+export async function exportPdf(project: Project): Promise<void> {
+  const [{ jsPDF }, svg2pdfMod] = await Promise.all([
+    import("jspdf"),
+    import("svg2pdf.js"),
+  ]);
+  const svg2pdf = svg2pdfMod.svg2pdf;
+
+  const { vw, vh } = svgSize(project);
+  // Rejtett konténer: a svg2pdf-nek a DOM-ban lévő elemre van szüksége a
+  // szöveg- és elrendezés-méretekhez.
+  const holder = document.createElement("div");
+  holder.style.cssText = "position:fixed;left:-99999px;top:0;";
+  holder.innerHTML = buildSvg(project);
+  const svgEl = holder.firstElementChild as SVGSVGElement;
+  document.body.appendChild(holder);
+
+  try {
+    const doc = new jsPDF({
+      orientation: vw >= vh ? "landscape" : "portrait",
+      unit: "pt",
+      format: [vw, vh],
+    });
+    await svg2pdf(svgEl, doc, { x: 0, y: 0, width: vw, height: vh });
+    doc.save(`${safeName(project.name)}.pdf`);
+  } finally {
+    holder.remove();
+  }
 }

@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import type { useEditor } from "../state/useEditor";
 import { exportJson, importJson } from "../lib/storage";
-import { exportPng, exportSvg } from "../lib/export";
+import { exportPdf, exportPng, exportSvg } from "../lib/export";
 
 type Editor = ReturnType<typeof useEditor>;
 
@@ -65,6 +65,13 @@ export function Toolbar({ editor, onFit }: Props) {
           }
         >
           PNG
+        </button>
+        <button
+          onClick={() =>
+            exportPdf(project).catch(() => alert("PDF export sikertelen."))
+          }
+        >
+          PDF
         </button>
       </div>
 
