@@ -375,7 +375,7 @@ export function midPoint(
 // (track) húzzuk szét, hogy ne lapoljanak egymásra, hanem rendezett
 // kábelkötegként fussanak egymás mellett.
 
-const TRACK = 7; // párhuzamos sávok távolsága (px)
+const TRACK = 7; // sáv-összevonási tűrés (a tényleges sávtáv adaptív: lásd separateTracks)
 const CHANNEL = 26; // ennyin belül egy csatornának számít (összevonási tűrés)
 
 /** Derékszögű H-V-H útvonal pontlistája (a lábaktól kifelé, közös függőleges csatornán át). */
@@ -445,8 +445,11 @@ function separateTracks(lists: P[][], orient: "v" | "h"): void {
     const flush = () => {
       if (group.length > 1) {
         const n = group.length;
+        // Adaptív sávtáv: sok vezeték egy csatornában → szűkebb (5px),
+        // kevés → tágabb (10px), hogy a rajz ne nőjön túl szélesre, de olvasható maradjon.
+        const spacing = Math.max(5, Math.min(10, 12 - n));
         group.forEach((s, k) => {
-          const off = (k - (n - 1) / 2) * TRACK;
+          const off = (k - (n - 1) / 2) * spacing;
           const pts = lists[s.li];
           if (orient === "v") {
             pts[s.i].x += off;
