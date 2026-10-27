@@ -498,6 +498,9 @@ export function routeWires(
   const map = new Map<string, string>();
   const ids: string[] = [];
   const lists: P[][] = [];
+  // Trunk-vezetékeknél a leágazás UTÁNI rész (gerinc + sín-láb). Ezt a
+  // sáv-széthúzás NEM mozgatja, így a gerincek közös x-en maradnak (egy vonal).
+  const tails = new Map<string, P[]>();
 
   for (const w of project.wires) {
     const a = resolvePin(project, w.from);
@@ -526,26 +529,32 @@ export function routeWires(
       const tap =
         avoidRoute(pSrc, J, srcSide, railSide, obstacles) ??
         [pSrc, { x: pSrc.x + outDir(srcSide) * STUB, y: pSrc.y }, J];
-      // Gerinc (közös, szándékosan egymásra ül) + a sín-láb becsatlakozása.
-      const pts: P[] = [
-        ...tap,
+      // A LEÁGAZÁST a sima vezetékekkel EGYÜTT húzzuk sávokba, hogy a párhuzamos
+      // (pl. több, egy irányba kerülő) leágazások se lapoljanak egymásra. A J
+      // (gerinc-becsatlakozás a forrás magasságában) nem mozdul, mert a
+      // separateTracks csak a belső szakaszokat tolja; a gerinc + sín-láb rész
+      // a J UTÁN jön, közös x-en, ezért a trunk-összevonás megmarad.
+      ids.push(w.id);
+      lists.push(tap);
+      tails.set(w.id, [
         { x: spineX, y: pRail.y },
         { x: pRail.x, y: pRail.y },
-      ];
-      // A trunk-vezetékek NEM mennek a sáv-széthúzáson át — a gerincük
-      // szándékosan egymásra ül (egy közös vonal).
-      map.set(w.id, polyPath(pts, !ortho));
+      ]);
     } else {
       ids.push(w.id);
       lists.push(baseRoute(pa, pb, a.pin.side, b.pin.side, obstacles));
     }
   }
 
-  // A sima (nem-trunk) vezetékeknél előbb a függőleges csatornákat, majd a
-  // vízszintes sávokat húzzuk szét, hogy ne lapoljanak egymásra.
+  // Előbb a függőleges csatornákat, majd a vízszintes sávokat húzzuk szét,
+  // hogy a vezetékek (a trunk-leágazásokat is beleértve) ne lapoljanak egymásra.
   separateTracks(lists, "v");
   separateTracks(lists, "h");
-  ids.forEach((id, idx) => map.set(id, polyPath(lists[idx], !ortho)));
+  ids.forEach((id, idx) => {
+    const tail = tails.get(id);
+    const pts = tail ? [...lists[idx], ...tail] : lists[idx];
+    map.set(id, polyPath(pts, !ortho));
+  });
 
   return map;
 }
