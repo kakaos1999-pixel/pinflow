@@ -9,7 +9,13 @@ import {
   useState,
 } from "react";
 import { getDef } from "../data/components";
-import { obstacleRects, pinWorldPos, resolvePin, routeWire } from "../lib/geometry";
+import {
+  obstacleRects,
+  pinWorldPos,
+  resolvePin,
+  routeWire,
+  routeWires,
+} from "../lib/geometry";
 import { ComponentView } from "./ComponentView";
 import { WireView } from "./WireView";
 import { NoteView } from "./NoteView";
@@ -216,6 +222,8 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
 
   const ortho = editor.settings.ortho;
   const obstacles = obstacleRects(project);
+  // Minden vezeték útvonalát EGYÜTT tervezzük (kötegelt, párhuzamos sávok).
+  const wirePaths = routeWires(project, obstacles, ortho);
 
   // Függő vezeték előnézet-útvonala.
   let preview: string | null = null;
@@ -281,8 +289,7 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
               project={project}
               selected={selection?.kind === "wire" && selection.id === w.id}
               connected={connectedWires.has(w.id)}
-              ortho={ortho}
-              obstacles={obstacles}
+              d={wirePaths.get(w.id) ?? ""}
               onSelect={(id) => editor.setSelection({ kind: "wire", id })}
             />
           ))}

@@ -365,3 +365,138 @@ export function midPoint(
 ): { x: number; y: number } {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
+
+// ====================================================================
+// KÖTEG-ÚTVONALTERVEZÉS (cable-harness)
+// ====================================================================
+//
+// A vezetékeket NEM egyenként, hanem EGYÜTT tervezzük: derékszögű (Manhattan)
+// útvonalak, majd az egymásra eső párhuzamos szakaszokat külön "sávokba"
+// (track) húzzuk szét, hogy ne lapoljanak egymásra, hanem rendezett
+// kábelkötegként fussanak egymás mellett.
+
+const TRACK = 7; // párhuzamos sávok távolsága (px)
+const CHANNEL = 26; // ennyin belül egy csatornának számít (összevonási tűrés)
+
+/** Derékszögű H-V-H útvonal pontlistája (a lábaktól kifelé, közös függőleges csatornán át). */
+function hvhPoints(a: P, b: P, aSide?: Side, bSide?: Side): P[] {
+  const ax2 = a.x + outDir(aSide) * STUB;
+  const bx2 = b.x + outDir(bSide) * STUB;
+  const cx = (ax2 + bx2) / 2;
+  return [
+    { x: a.x, y: a.y },
+    { x: ax2, y: a.y },
+    { x: cx, y: a.y },
+    { x: cx, y: b.y },
+    { x: bx2, y: b.y },
+    { x: b.x, y: b.y },
+  ];
+}
+
+/** Egy vezeték alap-útvonala (derékszögű): kerülő, ha eszközt keresztezne. */
+function baseRoute(a: P, b: P, aSide: Side | undefined, bSide: Side | undefined, obstacles: Rect[]): P[] {
+  if (obstacles.length) {
+    const infl = obstacles.map((r) => inflate(r, MARGIN));
+    if (!directClear(a, b, aSide, bSide, true, infl)) {
+      const r = avoidRoute(a, b, aSide, bSide, obstacles);
+      if (r) return r.map((p) => ({ ...p }));
+    }
+  }
+  return hvhPoints(a, b, aSide, bSide);
+}
+
+/** Az egymásra eső párhuzamos szakaszokat sávokba húzza szét.
+ *  orient='v': függőleges szakaszokat x-ben, 'h': vízszinteseket y-ban tol el.
+ *  Csak a "belső" (mindkét végén merőleges szomszéddal bíró) szakaszokat mozgatja,
+ *  így a lábaktól kiinduló csonkok a helyükön maradnak. */
+function separateTracks(lists: P[][], orient: "v" | "h"): void {
+  type Seg = { li: number; i: number; pos: number; lo: number; hi: number };
+  const segs: Seg[] = [];
+
+  for (let li = 0; li < lists.length; li++) {
+    const pts = lists[li];
+    for (let i = 1; i < pts.length - 2; i++) {
+      const p = pts[i], q = pts[i + 1];
+      const isV = Math.abs(p.x - q.x) < 0.01 && Math.abs(p.y - q.y) >= 0.5;
+      const isH = Math.abs(p.y - q.y) < 0.01 && Math.abs(p.x - q.x) >= 0.5;
+      if (orient === "v" && isV) {
+        // a szomszédos szakaszok legyenek vízszintesek (merőlegesek)
+        if (Math.abs(pts[i - 1].y - p.y) > 0.01 || Math.abs(pts[i + 2].y - q.y) > 0.01) continue;
+        segs.push({ li, i, pos: p.x, lo: Math.min(p.y, q.y), hi: Math.max(p.y, q.y) });
+      } else if (orient === "h" && isH) {
+        if (Math.abs(pts[i - 1].x - p.x) > 0.01 || Math.abs(pts[i + 2].x - q.x) > 0.01) continue;
+        segs.push({ li, i, pos: p.y, lo: Math.min(p.x, q.x), hi: Math.max(p.x, q.x) });
+      }
+    }
+  }
+
+  // Csatornánként (közel azonos pozíció) csoportosítunk, majd az átfedő
+  // szakaszokat sávokra bontjuk.
+  const buckets = new Map<number, Seg[]>();
+  for (const s of segs) {
+    const key = Math.round(s.pos / CHANNEL);
+    (buckets.get(key) ?? buckets.set(key, []).get(key)!).push(s);
+  }
+
+  for (const list of buckets.values()) {
+    list.sort((a, b) => a.lo - b.lo || a.hi - b.hi);
+    let group: Seg[] = [];
+    let groupHi = -Infinity;
+    const flush = () => {
+      if (group.length > 1) {
+        const n = group.length;
+        group.forEach((s, k) => {
+          const off = (k - (n - 1) / 2) * TRACK;
+          const pts = lists[s.li];
+          if (orient === "v") {
+            pts[s.i].x += off;
+            pts[s.i + 1].x += off;
+          } else {
+            pts[s.i].y += off;
+            pts[s.i + 1].y += off;
+          }
+        });
+      }
+      group = [];
+      groupHi = -Infinity;
+    };
+    for (const s of list) {
+      if (group.length === 0 || s.lo <= groupHi + TRACK) {
+        group.push(s);
+        groupHi = Math.max(groupHi, s.hi);
+      } else {
+        flush();
+        group.push(s);
+        groupHi = s.hi;
+      }
+    }
+    flush();
+  }
+}
+
+/** Minden vezeték útvonala EGYÜTT megtervezve, kötegelt (párhuzamos) elrendezéssel.
+ *  Visszaad: vezeték-id → SVG path d. */
+export function routeWires(
+  project: Project,
+  obstacles: Rect[],
+  ortho: boolean,
+): Map<string, string> {
+  const ids: string[] = [];
+  const lists: P[][] = [];
+  for (const w of project.wires) {
+    const a = resolvePin(project, w.from);
+    const b = resolvePin(project, w.to);
+    if (!a || !b) continue;
+    const pa = pinWorldPos(a.instance, a.def, a.pin.id)!;
+    const pb = pinWorldPos(b.instance, b.def, b.pin.id)!;
+    ids.push(w.id);
+    lists.push(baseRoute(pa, pb, a.pin.side, b.pin.side, obstacles));
+  }
+  // Előbb a függőleges csatornákat, majd a vízszintes sávokat húzzuk szét.
+  separateTracks(lists, "v");
+  separateTracks(lists, "h");
+
+  const map = new Map<string, string>();
+  ids.forEach((id, idx) => map.set(id, polyPath(lists[idx], !ortho)));
+  return map;
+}

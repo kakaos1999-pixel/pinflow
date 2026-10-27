@@ -1,14 +1,7 @@
 // Egy vezeték rajza két láb között. Vastag, átlátszó "hit" path segíti a kijelölést.
 
 import type { Project, Wire } from "../types";
-import {
-  busColor,
-  midPoint,
-  pinWorldPos,
-  type Rect,
-  resolvePin,
-  routeWire,
-} from "../lib/geometry";
+import { busColor, midPoint, pinWorldPos, resolvePin } from "../lib/geometry";
 
 interface Props {
   wire: Wire;
@@ -16,10 +9,8 @@ interface Props {
   selected: boolean;
   /** A vezeték a kijelölt komponenshez csatlakozik — kiemeljük. */
   connected: boolean;
-  /** Derékszögű útvonal. */
-  ortho: boolean;
-  /** Komponens-akadályok, hogy a vezeték kikerülje az eszközöket. */
-  obstacles: Rect[];
+  /** Előre kiszámolt (kötegelt) útvonal SVG path. */
+  d: string;
   onSelect: (id: string) => void;
 }
 
@@ -28,8 +19,7 @@ export function WireView({
   project,
   selected,
   connected,
-  ortho,
-  obstacles,
+  d,
   onSelect,
 }: Props) {
   const a = resolvePin(project, wire.from);
@@ -38,7 +28,6 @@ export function WireView({
 
   const pa = pinWorldPos(a.instance, a.def, a.pin.id)!;
   const pb = pinWorldPos(b.instance, b.def, b.pin.id)!;
-  const d = routeWire(pa, pb, a.pin.side, b.pin.side, ortho, obstacles);
   const color = wire.color ?? busColor(a.pin.bus);
   const mid = midPoint(pa, pb);
 

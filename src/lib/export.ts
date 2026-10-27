@@ -11,7 +11,7 @@ import {
   placedPins,
   pinWorldPos,
   resolvePin,
-  routeWire,
+  routeWires,
 } from "./geometry";
 import { downloadBlob, safeName } from "./storage";
 
@@ -44,6 +44,7 @@ export function buildSvg(project: Project, ortho = false): string {
   parts.push(`<g transform="translate(${ox} ${oy})">`);
 
   const obstacles = obstacleRects(project);
+  const wirePaths = routeWires(project, obstacles, ortho);
 
   // Vezetékek (a komponensek alá).
   for (const w of project.wires) {
@@ -54,7 +55,7 @@ export function buildSvg(project: Project, ortho = false): string {
     const pc = pinWorldPos(c.instance, c.def, c.pin.id)!;
     const color = w.color ?? busColor(a.pin.bus);
     parts.push(
-      `<path d="${routeWire(pa, pc, a.pin.side, c.pin.side, ortho, obstacles)}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>`,
+      `<path d="${wirePaths.get(w.id) ?? ""}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>`,
     );
     if (w.label) {
       const m = midPoint(pa, pc);
