@@ -31,10 +31,12 @@ export function normalize(data: unknown): Project {
   if (!data || typeof data !== "object") return base;
   const d = data as Partial<Project>;
   return {
-    version: typeof d.version === "number" ? d.version : PROJECT_VERSION,
+    version: PROJECT_VERSION,
     name: typeof d.name === "string" ? d.name : base.name,
     instances: Array.isArray(d.instances) ? d.instances : [],
     wires: Array.isArray(d.wires) ? d.wires : [],
+    // v1 projektekben nincs `notes` — üres tömbbel pótoljuk.
+    notes: Array.isArray(d.notes) ? d.notes : [],
   };
 }
 
@@ -75,4 +77,38 @@ export function downloadBlob(blob: Blob, filename: string): void {
 
 export function safeName(name: string): string {
   return (name || "pinflow").replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 60);
+}
+
+/** Szöveg letöltése tetszőleges fájlként (pl. CSV netlista/BOM export). */
+export function downloadText(text: string, filename: string, mime = "text/plain"): void {
+  downloadBlob(new Blob([text], { type: `${mime};charset=utf-8` }), filename);
+}
+
+// ---- UI-beállítások (téma, snap, derékszögű útvonal) ----
+const SETTINGS_KEY = "pinflow:settings";
+
+export interface Settings {
+  theme: "light" | "dark";
+  snap: boolean;
+  ortho: boolean;
+}
+
+const DEFAULT_SETTINGS: Settings = { theme: "light", snap: true, ortho: false };
+
+export function loadSettings(): Settings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return { ...DEFAULT_SETTINGS };
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+export function saveSettings(s: Settings): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  } catch {
+    // csendben elnyeljük
+  }
 }

@@ -68,6 +68,8 @@ export interface Instance {
   y: number;
   /** Opcionális felhasználói felülírt címke. */
   label?: string;
+  /** Vízszintes tükrözés — a bal és jobb oszlop lábai helyet cserélnek. */
+  mirror?: boolean;
 }
 
 /** Egy vezeték, ami két példány két lábát köti össze. */
@@ -76,6 +78,18 @@ export interface Wire {
   from: PinRef;
   to: PinRef;
   /** Vonalszín; ha hiányzik, a forrás-láb busza alapján számoljuk. */
+  color?: string;
+  /** Opcionális felirat a vezeték közepén. */
+  label?: string;
+}
+
+/** Szabad szöveges jegyzet a vásznon (nem köthető lábakhoz). */
+export interface Note {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  /** Opcionális szövegszín. */
   color?: string;
 }
 
@@ -92,10 +106,12 @@ export interface Project {
   name: string;
   instances: Instance[];
   wires: Wire[];
+  /** Szabad szöveges jegyzetek a vásznon. */
+  notes: Note[];
 }
 
-export const PROJECT_VERSION = 1;
+export const PROJECT_VERSION = 2;
 
 export function emptyProject(name = "Névtelen projekt"): Project {
-  return { version: PROJECT_VERSION, name, instances: [], wires: [] };
+  return { version: PROJECT_VERSION, name, instances: [], wires: [], notes: [] };
 }

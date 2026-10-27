@@ -1,6 +1,7 @@
 // Komponens-paletta: innen lehet drag-and-drop behúzni (vagy kattintással
 // hozzáadni) komponenseket a vászonra.
 
+import { useState } from "react";
 import { COMPONENTS } from "../data/components";
 
 interface Props {
@@ -8,11 +9,31 @@ interface Props {
 }
 
 export function Palette({ onAdd }: Props) {
+  const [q, setQ] = useState("");
+  const query = q.trim().toLowerCase();
+  const list = query
+    ? COMPONENTS.filter((d) =>
+        `${d.name} ${d.category ?? ""} ${d.note ?? ""}`
+          .toLowerCase()
+          .includes(query),
+      )
+    : COMPONENTS;
+
   return (
     <aside className="palette">
       <div className="palette-head">Komponensek</div>
+      <input
+        className="palette-search"
+        type="search"
+        placeholder="Keresés… (pl. I2C, szervó)"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
       <div className="palette-list">
-        {COMPONENTS.map((def) => (
+        {list.length === 0 && (
+          <div className="palette-empty">Nincs találat.</div>
+        )}
+        {list.map((def) => (
           <button
             key={def.id}
             className="palette-item"

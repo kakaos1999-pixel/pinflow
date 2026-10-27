@@ -6,8 +6,14 @@ import type { PinRef, Project, Wire } from "../types";
 import { emptyProject } from "../types";
 import { getDef } from "../data/components";
 import { uid } from "../lib/uid";
-import { contentBounds } from "../lib/geometry";
-import { loadLocal, saveLocal } from "../lib/storage";
+import { contentBounds, instanceBounds } from "../lib/geometry";
+import {
+  loadLocal,
+  loadSettings,
+  saveLocal,
+  saveSettings,
+  type Settings,
+} from "../lib/storage";
 
 export interface View {
   tx: number;
@@ -18,9 +24,17 @@ export interface View {
 export type Selection =
   | { kind: "instance"; id: string }
   | { kind: "wire"; id: string }
+  | { kind: "note"; id: string }
   | null;
 
 const DEFAULT_VIEW: View = { tx: 0, ty: 0, scale: 1 };
+
+/** Rácsosztás (pixel) a snap-hez — egyezik a Canvas GRID értékével. */
+export const GRID = 20;
+
+function snapTo(v: number, on: boolean): number {
+  return on ? Math.round(v / GRID) * GRID : Math.round(v);
+}
 
 export function useEditor() {
   const [project, setProject] = useState<Project>(
@@ -30,9 +44,12 @@ export function useEditor() {
   const [selection, setSelection] = useState<Selection>(null);
   const [pending, setPending] = useState<PinRef | null>(null);
   const [hint, setHint] = useState<string>("");
+  const [settings, setSettings] = useState<Settings>(() => loadSettings());
 
-  // Undo verem (csak a projektre).
+  // Undo + redo verem (csak a projektre).
   const past = useRef<Project[]>([]);
+  const future = useRef<Project[]>([]);
+  const [histVersion, setHistVersion] = useState(0); // kényszerít re-rendert a gombok állapotához
   // A folyamatban lévő láb ref-je, hogy a clickPin ne ágyazzon setState-et.
   const pendingRef = useRef<PinRef | null>(null);
 
@@ -41,9 +58,17 @@ export function useEditor() {
     saveLocal(project);
   }, [project]);
 
+  // Beállítások mentése + <html data-theme> beállítása a témához.
+  useEffect(() => {
+    saveSettings(settings);
+    document.documentElement.setAttribute("data-theme", settings.theme);
+  }, [settings]);
+
   const pushPast = useCallback((p: Project) => {
     past.current.push(p);
     if (past.current.length > 100) past.current.shift();
+    future.current = []; // új művelet eldobja a redo-vermet
+    setHistVersion((v) => v + 1);
   }, []);
 
   /** Projekt-módosítás undo-mentéssel. */
@@ -58,11 +83,35 @@ export function useEditor() {
   const undo = useCallback(() => {
     const prev = past.current.pop();
     if (prev) {
+      future.current.push(project);
       setProject(prev);
       setSelection(null);
       pendingRef.current = null;
       setPending(null);
+      setHistVersion((v) => v + 1);
     }
+  }, [project]);
+
+  const redo = useCallback(() => {
+    const next = future.current.pop();
+    if (next) {
+      past.current.push(project);
+      setProject(next);
+      setSelection(null);
+      pendingRef.current = null;
+      setPending(null);
+      setHistVersion((v) => v + 1);
+    }
+  }, [project]);
+
+  const setSetting = useCallback(
+    <K extends keyof Settings>(key: K, value: Settings[K]) => {
+      setSettings((s) => ({ ...s, [key]: value }));
+    },
+    [],
+  );
+  const toggleTheme = useCallback(() => {
+    setSettings((s) => ({ ...s, theme: s.theme === "dark" ? "light" : "dark" }));
   }, []);
 
   const addInstance = useCallback(
@@ -70,30 +119,87 @@ export function useEditor() {
       const def = getDef(defId);
       if (!def) return;
       const id = uid("i");
+      const snap = settings.snap;
       commit((p) => ({
         ...p,
         instances: [
           ...p.instances,
-          { id, defId, x: Math.round(x), y: Math.round(y) },
+          { id, defId, x: snapTo(x, snap), y: snapTo(y, snap) },
         ],
       }));
       setSelection({ kind: "instance", id });
     },
-    [commit],
+    [commit, settings.snap],
   );
 
   const moveInstance = useCallback(
     (id: string, x: number, y: number) => {
       // Mozgatás közben NEM mentünk undo-pontot minden lépésnél; csak az
       // állapotot frissítjük. (Az undo-pont a mozgatás kezdetén készül.)
+      const snap = settings.snap;
       setProject((p) => ({
         ...p,
         instances: p.instances.map((i) =>
-          i.id === id ? { ...i, x: Math.round(x), y: Math.round(y) } : i,
+          i.id === id ? { ...i, x: snapTo(x, snap), y: snapTo(y, snap) } : i,
         ),
       }));
     },
-    [],
+    [settings.snap],
+  );
+
+  /** Kijelölt példány vagy jegyzet elmozgatása nyíl-billentyűkkel. */
+  const nudgeSelection = useCallback(
+    (dx: number, dy: number) => {
+      if (!selection) return;
+      if (selection.kind === "instance") {
+        commit((p) => ({
+          ...p,
+          instances: p.instances.map((i) =>
+            i.id === selection.id
+              ? { ...i, x: Math.round(i.x + dx), y: Math.round(i.y + dy) }
+              : i,
+          ),
+        }));
+      } else if (selection.kind === "note") {
+        commit((p) => ({
+          ...p,
+          notes: p.notes.map((n) =>
+            n.id === selection.id
+              ? { ...n, x: Math.round(n.x + dx), y: Math.round(n.y + dy) }
+              : n,
+          ),
+        }));
+      }
+    },
+    [selection, commit],
+  );
+
+  /** Kijelölt komponens duplikálása (kis eltolással). */
+  const duplicateInstance = useCallback(
+    (id: string) => {
+      const src = project.instances.find((i) => i.id === id);
+      if (!src) return;
+      const nid = uid("i");
+      commit((p) => ({
+        ...p,
+        instances: [...p.instances, { ...src, id: nid, x: src.x + 24, y: src.y + 24 }],
+      }));
+      setSelection({ kind: "instance", id: nid });
+    },
+    [project, commit],
+  );
+
+  /** Vízszintes tükrözés be/ki a kijelölt komponensen. */
+  const toggleMirror = useCallback(
+    (id: string) => {
+      commit((p) => ({
+        ...p,
+        instances: p.instances.map((i) =>
+          i.id === id ? { ...i, mirror: !i.mirror } : i,
+        ),
+      }));
+    },
+    [commit],
   );
 
   /** Undo-pont rögzítése (pl. mozgatás/akció kezdete előtt). */
@@ -187,14 +293,80 @@ export function useEditor() {
     [commit],
   );
 
+  const setWireLabel = useCallback(
+    (id: string, label: string) => {
+      commit((p) => ({
+        ...p,
+        wires: p.wires.map((w) => (w.id === id ? { ...w, label } : w)),
+      }));
+    },
+    [commit],
+  );
+
+  // ---- Jegyzetek ----
+  const addNote = useCallback(
+    (x: number, y: number) => {
+      const id = uid("n");
+      commit((p) => ({
+        ...p,
+        notes: [
+          ...p.notes,
+          { id, x: Math.round(x), y: Math.round(y), text: "Új jegyzet" },
+        ],
+      }));
+      setSelection({ kind: "note", id });
+    },
+    [commit],
+  );
+
+  const moveNote = useCallback((id: string, x: number, y: number) => {
+    setProject((p) => ({
+      ...p,
+      notes: p.notes.map((n) =>
+        n.id === id ? { ...n, x: Math.round(x), y: Math.round(y) } : n,
+      ),
+    }));
+  }, []);
+
+  const setNoteText = useCallback(
+    (id: string, text: string) => {
+      commit((p) => ({
+        ...p,
+        notes: p.notes.map((n) => (n.id === id ? { ...n, text } : n)),
+      }));
+    },
+    [commit],
+  );
+
+  const setNoteColor = useCallback(
+    (id: string, color: string) => {
+      commit((p) => ({
+        ...p,
+        notes: p.notes.map((n) => (n.id === id ? { ...n, color } : n)),
+      }));
+    },
+    [commit],
+  );
+
+  const deleteNote = useCallback(
+    (id: string) => {
+      commit((p) => ({ ...p, notes: p.notes.filter((n) => n.id !== id) }));
+      setSelection(null);
+    },
+    [commit],
+  );
+
   const deleteSelection = useCallback(() => {
     if (!selection) return;
     if (selection.kind === "instance") deleteInstance(selection.id);
-    else deleteWire(selection.id);
-  }, [selection, deleteInstance, deleteWire]);
+    else if (selection.kind === "wire") deleteWire(selection.id);
+    else deleteNote(selection.id);
+  }, [selection, deleteInstance, deleteWire, deleteNote]);
 
   const loadProject = useCallback((p: Project) => {
     past.current = [];
+    future.current = [];
+    setHistVersion((v) => v + 1);
     setProject(p);
     setSelection(null);
     pendingRef.current = null;
@@ -235,17 +407,52 @@ export function useEditor() {
     [project],
   );
 
+  /** Nézet a kijelölt komponensre ráközelítve. */
+  const fitSelection = useCallback(
+    (vpWidth: number, vpHeight: number) => {
+      if (selection?.kind !== "instance") return;
+      const inst = project.instances.find((i) => i.id === selection.id);
+      if (!inst) return;
+      const b = instanceBounds(inst);
+      if (!b) return;
+      const pad = 120;
+      const scale = Math.min(
+        2.5,
+        Math.max(
+          0.3,
+          Math.min(
+            vpWidth / (b.width + pad * 2),
+            vpHeight / (b.height + pad * 2),
+          ),
+        ),
+      );
+      setView({
+        tx: vpWidth / 2 - (b.x + b.width / 2) * scale,
+        ty: vpHeight / 2 - (b.y + b.height / 2) * scale,
+        scale,
+      });
+    },
+    [project, selection],
+  );
+
   return {
     project,
     view,
     selection,
     pending,
     hint,
+    settings,
+    histVersion,
     setView,
     setSelection,
     setHint,
+    setSetting,
+    toggleTheme,
     addInstance,
     moveInstance,
+    nudgeSelection,
+    duplicateInstance,
+    toggleMirror,
     snapshot,
     deleteInstance,
     setInstanceLabel,
@@ -253,13 +460,22 @@ export function useEditor() {
     cancelPending,
     deleteWire,
     setWireColor,
+    setWireLabel,
+    addNote,
+    moveNote,
+    setNoteText,
+    setNoteColor,
+    deleteNote,
     deleteSelection,
     loadProject,
     newProject,
     renameProject,
     fitView,
+    fitSelection,
     undo,
+    redo,
     canUndo: () => past.current.length > 0,
+    canRedo: () => future.current.length > 0,
   };
 }
 

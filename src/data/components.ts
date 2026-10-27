@@ -222,6 +222,16 @@ const PCA9685_R: PinSpec[] = [
   { id: "CH1", name: "CH1", sub: "PWM", bus: "pwm" },
   { id: "CH2", name: "CH2", sub: "PWM", bus: "pwm" },
   { id: "CH3", name: "CH3", sub: "PWM", bus: "pwm" },
+  { id: "CH4", name: "CH4", sub: "PWM", bus: "pwm" },
+  { id: "CH5", name: "CH5", sub: "PWM", bus: "pwm" },
+  { id: "CH6", name: "CH6", sub: "PWM", bus: "pwm" },
+  { id: "CH7", name: "CH7", sub: "PWM", bus: "pwm" },
+  { id: "CH8", name: "CH8", sub: "PWM", bus: "pwm" },
+  { id: "CH9", name: "CH9", sub: "PWM", bus: "pwm" },
+  { id: "CH10", name: "CH10", sub: "PWM", bus: "pwm" },
+  { id: "CH11", name: "CH11", sub: "PWM", bus: "pwm" },
+  { id: "CH12", name: "CH12", sub: "PWM", bus: "pwm" },
+  { id: "CH13", name: "CH13", sub: "PWM", bus: "pwm" },
   { id: "CH14", name: "CH14", sub: "PWM", bus: "pwm" },
   { id: "CH15", name: "CH15", sub: "PWM", bus: "pwm" },
 ];
@@ -258,6 +268,179 @@ const SHT3X: PinSpec[] = [
   { id: "ADR", name: "ADR", sub: "cím bit", bus: "other" },
   { id: "ALERT", name: "ALERT", bus: "other" },
 ];
+
+const BME280: PinSpec[] = [
+  { id: "VIN", name: "VIN", sub: "3-5V", bus: "power" },
+  { id: "GND", name: "GND", bus: "gnd" },
+  { id: "SCL", name: "SCL", sub: "SPI SCK", bus: "i2c" },
+  { id: "SDA", name: "SDA", sub: "SPI MOSI", bus: "i2c" },
+  { id: "CSB", name: "CSB", sub: "SPI CS", bus: "spi" },
+  { id: "SDO", name: "SDO", sub: "SPI MISO / cím", bus: "spi" },
+];
+
+const SSD1306: PinSpec[] = [
+  { id: "GND", name: "GND", bus: "gnd" },
+  { id: "VCC", name: "VCC", sub: "3-5V", bus: "power" },
+  { id: "SCL", name: "SCL", bus: "i2c" },
+  { id: "SDA", name: "SDA", bus: "i2c" },
+];
+
+const HCSR04: PinSpec[] = [
+  { id: "VCC", name: "VCC", sub: "5V", bus: "power" },
+  { id: "TRIG", name: "TRIG", sub: "kimenet", bus: "gpio" },
+  { id: "ECHO", name: "ECHO", sub: "bemenet · 5V!", bus: "gpio" },
+  { id: "GND", name: "GND", bus: "gnd" },
+];
+
+const DHT22: PinSpec[] = [
+  { id: "VCC", name: "VCC", sub: "3-5V", bus: "power" },
+  { id: "DATA", name: "DATA", sub: "1-wire · pull-up", bus: "gpio" },
+  { id: "GND", name: "GND", bus: "gnd" },
+];
+
+const DS18B20: PinSpec[] = [
+  { id: "VDD", name: "VDD", sub: "3-5V", bus: "power" },
+  { id: "DQ", name: "DQ", sub: "1-wire · 4k7 pull-up", bus: "gpio" },
+  { id: "GND", name: "GND", bus: "gnd" },
+];
+
+const WS2812: PinSpec[] = [
+  { id: "5V", name: "5V", sub: "táp (VIN)", bus: "power" },
+  { id: "DIN", name: "DIN", sub: "adat be", bus: "gpio" },
+  { id: "GND", name: "GND", bus: "gnd" },
+];
+const WS2812_R: PinSpec[] = [
+  { id: "5VO", name: "5V", sub: "táp ki", bus: "power" },
+  { id: "DOUT", name: "DOUT", sub: "adat ki", bus: "gpio" },
+  { id: "GNDO", name: "GND", bus: "gnd" },
+];
+
+const MICROSD: PinSpec[] = [
+  { id: "VCC", name: "VCC", sub: "3-5V", bus: "power" },
+  { id: "GND", name: "GND", bus: "gnd" },
+  { id: "MISO", name: "MISO", bus: "spi" },
+  { id: "MOSI", name: "MOSI", bus: "spi" },
+  { id: "SCK", name: "SCK", bus: "spi" },
+  { id: "CS", name: "CS", bus: "spi" },
+];
+
+const LLC_LV: PinSpec[] = [
+  { id: "LV", name: "LV", sub: "logika 3V3", bus: "power" },
+  { id: "LGND", name: "GND", bus: "gnd" },
+  { id: "LV1", name: "LV1", bus: "gpio" },
+  { id: "LV2", name: "LV2", bus: "gpio" },
+  { id: "LV3", name: "LV3", bus: "gpio" },
+  { id: "LV4", name: "LV4", bus: "gpio" },
+];
+const LLC_HV: PinSpec[] = [
+  { id: "HV", name: "HV", sub: "logika 5V", bus: "power" },
+  { id: "HGND", name: "GND", bus: "gnd" },
+  { id: "HV1", name: "HV1", bus: "gpio" },
+  { id: "HV2", name: "HV2", bus: "gpio" },
+  { id: "HV3", name: "HV3", bus: "gpio" },
+  { id: "HV4", name: "HV4", bus: "gpio" },
+];
+
+const L298N: PinSpec[] = [
+  { id: "VMS", name: "+12V", sub: "motor táp", bus: "power" },
+  { id: "GND", name: "GND", bus: "gnd" },
+  { id: "5V", name: "+5V", sub: "logika", bus: "power" },
+  { id: "ENA", name: "ENA", sub: "PWM A", bus: "pwm" },
+  { id: "IN1", name: "IN1", bus: "gpio" },
+  { id: "IN2", name: "IN2", bus: "gpio" },
+  { id: "IN3", name: "IN3", bus: "gpio" },
+  { id: "IN4", name: "IN4", bus: "gpio" },
+  { id: "ENB", name: "ENB", sub: "PWM B", bus: "pwm" },
+];
+const L298N_R: PinSpec[] = [
+  { id: "OUT1", name: "OUT1", sub: "A motor", bus: "other" },
+  { id: "OUT2", name: "OUT2", sub: "A motor", bus: "other" },
+  { id: "OUT3", name: "OUT3", sub: "B motor", bus: "other" },
+  { id: "OUT4", name: "OUT4", sub: "B motor", bus: "other" },
+];
+
+const RELAY: PinSpec[] = [
+  { id: "VCC", name: "VCC", sub: "5V", bus: "power" },
+  { id: "GND", name: "GND", bus: "gnd" },
+  { id: "IN", name: "IN", sub: "vezérlés", bus: "gpio" },
+];
+const RELAY_R: PinSpec[] = [
+  { id: "COM", name: "COM", sub: "közös", bus: "other" },
+  { id: "NO", name: "NO", sub: "alapból nyitott", bus: "other" },
+  { id: "NC", name: "NC", sub: "alapból zárt", bus: "other" },
+];
+
+const SERVO: PinSpec[] = [
+  { id: "VCC", name: "V+", sub: "4.8-6V", bus: "power" },
+  { id: "GND", name: "GND", bus: "gnd" },
+  { id: "SIG", name: "SIG", sub: "PWM jel", bus: "pwm" },
+];
+
+// --- Táp / töltés / sínek (Gyula / SPIDER_BOT bővítés) ---------------
+const LIPO3S: PinSpec[] = [
+  { id: "P+", name: "+", sub: "12.6V", bus: "power" },
+  { id: "P-", name: "−", bus: "gnd" },
+  { id: "BAL", name: "balansz", sub: "B1·B2·B3", bus: "power" },
+];
+const BMS_L: PinSpec[] = [
+  { id: "B-", name: "B−", sub: "pakk −", bus: "gnd" },
+  { id: "B1", name: "B1", sub: "cella 1", bus: "power" },
+  { id: "B2", name: "B2", sub: "cella 2", bus: "power" },
+  { id: "B+", name: "B+", sub: "pakk +", bus: "power" },
+];
+const BMS_R: PinSpec[] = [
+  { id: "P+", name: "P+", sub: "véd. ki +", bus: "power" },
+  { id: "P-", name: "P−", sub: "véd. ki −", bus: "gnd" },
+];
+const IP2368_L: PinSpec[] = [
+  { id: "USBC", name: "USB-C", sub: "PD be", bus: "power" },
+  { id: "DCIN", name: "DC be", sub: "Qi 12V", bus: "power" },
+  { id: "GIN", name: "GND", bus: "gnd" },
+];
+const IP2368_R: PinSpec[] = [
+  { id: "BAT", name: "BAT", sub: "3S pakk +", bus: "power" },
+  { id: "BGND", name: "GND", bus: "gnd" },
+  { id: "STAT", name: "STAT", sub: "töltés-jel", bus: "other" },
+];
+const BUCK_L: PinSpec[] = [
+  { id: "IN+", name: "IN+", bus: "power" },
+  { id: "IN-", name: "IN−", bus: "gnd" },
+];
+const BUCK_R: PinSpec[] = [
+  { id: "OUT+", name: "OUT+", bus: "power" },
+  { id: "OUT-", name: "OUT−", bus: "gnd" },
+];
+const MAX98357: PinSpec[] = [
+  { id: "VIN", name: "VIN", sub: "5V", bus: "power" },
+  { id: "GND", name: "GND", bus: "gnd" },
+  { id: "DIN", name: "DIN", sub: "I2S adat", bus: "i2s" },
+  { id: "BCLK", name: "BCLK", bus: "i2s" },
+  { id: "LRC", name: "LRC", sub: "WS", bus: "i2s" },
+  { id: "GAIN", name: "GAIN", bus: "other" },
+  { id: "SD", name: "SD", sub: "mód/shutdown", bus: "other" },
+];
+const MAX98357_R: PinSpec[] = [
+  { id: "SPKP", name: "SPK+", bus: "other" },
+  { id: "SPKM", name: "SPK−", bus: "other" },
+];
+const GC9A01: PinSpec[] = [
+  { id: "VCC", name: "VCC", sub: "3-5V", bus: "power" },
+  { id: "GND", name: "GND", bus: "gnd" },
+  { id: "SCL", name: "SCL", sub: "SCLK", bus: "spi" },
+  { id: "SDA", name: "SDA", sub: "MOSI", bus: "spi" },
+  { id: "RES", name: "RES", sub: "reset", bus: "other" },
+  { id: "DC", name: "DC", sub: "adat/parancs", bus: "other" },
+  { id: "CS", name: "CS", bus: "spi" },
+  { id: "BLK", name: "BLK", sub: "háttérvil.", bus: "other" },
+];
+const SPEAKER: PinSpec[] = [
+  { id: "P", name: "+", bus: "other" },
+  { id: "M", name: "−", bus: "gnd" },
+];
+/** Táp-sín (bus-bar): n azonos busz-típusú csatlakozó. */
+function rail(name: string, bus: Bus, n: number): PinSpec[] {
+  return Array.from({ length: n }, (_, i) => ({ id: `t${i + 1}`, name, bus }));
+}
 
 // ====================================================================
 // A REGISZTER
@@ -354,6 +537,270 @@ export const COMPONENTS: ComponentDef[] = [
     },
     SHT3X,
     128,
+  ),
+  oneCol(
+    {
+      id: "bme280",
+      name: "BME280",
+      category: "I2C/SPI szenzor",
+      color: "#1a7f9c",
+      note: "Hő + pára + légnyomás. I2C cím 0x76/0x77, vagy 4-vezetékes SPI.",
+    },
+    BME280,
+    136,
+  ),
+  oneCol(
+    {
+      id: "ssd1306",
+      name: "SSD1306 OLED",
+      category: "I2C kijelző",
+      color: "#0b7285",
+      note: "0.96\" 128×64 I2C OLED. Alap cím 0x3C. Logika 3V3/5V.",
+    },
+    SSD1306,
+    140,
+  ),
+  oneCol(
+    {
+      id: "hcsr04",
+      name: "HC-SR04",
+      category: "Ultrahang",
+      color: "#9a3412",
+      note: "Távolságmérő. ECHO 5V-os — 3V3 MCU-nál feszültségosztó/szintillesztő kell!",
+    },
+    HCSR04,
+    132,
+  ),
+  oneCol(
+    {
+      id: "dht22",
+      name: "DHT22 / AM2302",
+      category: "Hő/pára",
+      color: "#2f9e44",
+      note: "1-wire protokoll, 10k pull-up a DATA lábra. DHT11 kompatibilis kiosztás.",
+    },
+    DHT22,
+    140,
+  ),
+  oneCol(
+    {
+      id: "ds18b20",
+      name: "DS18B20",
+      category: "1-wire hő",
+      color: "#2f9e44",
+      note: "1-wire hőmérő. 4,7k pull-up a DQ és VDD közé. Több szenzor egy buszon.",
+    },
+    DS18B20,
+    148,
+  ),
+  twoCol(
+    {
+      id: "ws2812",
+      name: "WS2812B (NeoPixel)",
+      category: "LED szalag",
+      color: "#c026d3",
+      note: "Címezhető RGB LED. 5V, DIN a vezérlőtől. Ajánlott 330–470Ω soros ellenállás + 1000µF a tápra.",
+    },
+    WS2812,
+    WS2812_R,
+    168,
+  ),
+  twoCol(
+    {
+      id: "microsd",
+      name: "micro SD modul",
+      category: "SPI tároló",
+      color: "#334155",
+      note: "SPI kártyaolvasó. Legtöbb modul 5V-ról működik, 3V3 logikára szintillesztővel.",
+    },
+    MICROSD,
+    [],
+    150,
+  ),
+  twoCol(
+    {
+      id: "llc",
+      name: "Szintillesztő (4 cs.)",
+      category: "Logika 3V3↔5V",
+      color: "#475569",
+      note: "Kétirányú logikai szintillesztő. LV = alacsony oldal (3V3), HV = magas oldal (5V).",
+    },
+    LLC_LV,
+    LLC_HV,
+    168,
+  ),
+  twoCol(
+    {
+      id: "l298n",
+      name: "L298N motorvezérlő",
+      category: "H-híd",
+      color: "#b45309",
+      note: "Kétcsatornás DC-motor / léptető meghajtó. ENA/ENB PWM, IN1–4 irány. 5V jumper levehető.",
+    },
+    L298N,
+    L298N_R,
+    176,
+  ),
+  twoCol(
+    {
+      id: "relay",
+      name: "Relé modul (1 cs.)",
+      category: "Kapcsoló",
+      color: "#7c3aed",
+      note: "Opto-leválasztott relé. IN aktív-alacsony a legtöbb modulnál. COM/NO/NC a terhelés oldalán.",
+    },
+    RELAY,
+    RELAY_R,
+    170,
+  ),
+  oneCol(
+    {
+      id: "servo",
+      name: "Szervó (SG90/MG996)",
+      category: "Aktuátor",
+      color: "#ea580c",
+      note: "Hobbi szervó. V+ külön tápról (ne az MCU 3V3-ról!), SIG ~50Hz PWM, közös GND.",
+    },
+    SERVO,
+    132,
+  ),
+  // --- Táp / töltés / hang / kijelző / sínek (Gyula bővítés) ---
+  oneCol(
+    {
+      id: "lipo3s",
+      name: "3S LiPo pakk",
+      category: "Akku",
+      color: "#b91c1c",
+      note: "11.1V névleges (12.6V töltve). Fő +/− az XT60-ra, balansz a BMS-re.",
+    },
+    LIPO3S,
+    150,
+  ),
+  twoCol(
+    {
+      id: "bms3s",
+      name: "3S BMS (60A)",
+      category: "Védelem",
+      color: "#7f1d1d",
+      note: "3S cella-védelem + balansz. B−/B1/B2/B+ a cellákra, P+/P− a védett kimenet.",
+    },
+    BMS_L,
+    BMS_R,
+    150,
+  ),
+  twoCol(
+    {
+      id: "ip2368",
+      name: "IP2368 töltő",
+      category: "Töltő",
+      color: "#9a3412",
+      note: "2–5S USB-C PD + DC (Qi dokk) töltő, 3S-re állítva. BAT a pakkra (BMS-en át).",
+    },
+    IP2368_L,
+    IP2368_R,
+    164,
+  ),
+  twoCol(
+    {
+      id: "buck6v",
+      name: "Buck 6V (XH-M401)",
+      category: "Táp",
+      color: "#166534",
+      note: "Step-down a szervó-sínre (~6V). IN a 3S fő sínről, OUT a 6V sínre. Bulk kondi kell!",
+    },
+    BUCK_L,
+    BUCK_R,
+    150,
+  ),
+  twoCol(
+    {
+      id: "buck5v",
+      name: "Buck 5V (XL4015)",
+      category: "Táp",
+      color: "#166534",
+      note: "Step-down a logikai sínre (5V). IN a 3S fő sínről, OUT a Pi/ESP 5V-ra.",
+    },
+    BUCK_L,
+    BUCK_R,
+    150,
+  ),
+  twoCol(
+    {
+      id: "max98357",
+      name: "MAX98357 I2S amp",
+      category: "Hang",
+      color: "#7c2d12",
+      note: "I2S D-osztályú erősítő. DIN = Pi I2S DOUT, BCLK/LRC közös az I2S busszal. SPK± a hangszóróra.",
+    },
+    MAX98357,
+    MAX98357_R,
+    160,
+  ),
+  oneCol(
+    {
+      id: "gc9a01",
+      name: 'GC9A01 1.28" kerek LCD',
+      category: "SPI kijelző",
+      color: "#5b21b6",
+      note: "240×240 kerek IPS, SPI. A 'szemekhez' 2 db: közös SCLK/MOSI, külön CS/DC/RST.",
+    },
+    GC9A01,
+    168,
+  ),
+  oneCol(
+    {
+      id: "speaker",
+      name: "Hangszóró (K50-8)",
+      category: "Hang",
+      color: "#334155",
+      note: "8Ω hangszóró a MAX98357 SPK± kimenetére.",
+    },
+    SPEAKER,
+    140,
+  ),
+  oneCol(
+    {
+      id: "rail6v",
+      name: "6V sín",
+      category: "Táp-sín",
+      color: "#15803d",
+      note: "Szervó-tápsín (a 6V buck kimenete). Ide köt a 2 PCA9685 V+ és a bulk kondik.",
+    },
+    rail("6V", "power", 8),
+    96,
+  ),
+  oneCol(
+    {
+      id: "rail5v",
+      name: "5V sín",
+      category: "Táp-sín",
+      color: "#15803d",
+      note: "5V logikai sín (XL4015). Ide köt a Pi 5V és az ESP32 VIN.",
+    },
+    rail("5V", "power", 6),
+    96,
+  ),
+  oneCol(
+    {
+      id: "rail3v3",
+      name: "3V3 sín",
+      category: "Táp-sín",
+      color: "#15803d",
+      note: "3V3 logikai sín. Szenzorok VIN/VCC.",
+    },
+    rail("3V3", "power", 6),
+    96,
+  ),
+  oneCol(
+    {
+      id: "railgnd",
+      name: "GND sín",
+      category: "Táp-sín",
+      color: "#334155",
+      note: "Közös föld (star-GND). Minden GND ide fut.",
+    },
+    rail("GND", "gnd", 10),
+    96,
   ),
 ];
 

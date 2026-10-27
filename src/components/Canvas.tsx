@@ -9,14 +9,17 @@ import {
   useState,
 } from "react";
 import { getDef } from "../data/components";
-import { pinWorldPos, resolvePin, wirePath } from "../lib/geometry";
+import { obstacleRects, pinWorldPos, resolvePin, routeWire } from "../lib/geometry";
 import { ComponentView } from "./ComponentView";
 import { WireView } from "./WireView";
+import { NoteView } from "./NoteView";
 import type { useEditor } from "../state/useEditor";
 
 export interface CanvasHandle {
   addAtCenter: (defId: string) => void;
+  addNoteAtCenter: () => void;
   fit: () => void;
+  fitSelection: () => void;
 }
 
 type Editor = ReturnType<typeof useEditor>;
@@ -31,6 +34,7 @@ const DRAG_THRESHOLD = 4;
 type Drag =
   | { mode: "pan"; sx: number; sy: number; ox: number; oy: number }
   | { mode: "move"; id: string; swx: number; swy: number; ox: number; oy: number }
+  | { mode: "note"; id: string; swx: number; swy: number; ox: number; oy: number }
   | null;
 
 export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
@@ -66,9 +70,20 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         cy - (def?.height ?? 60) / 2,
       );
     },
+    addNoteAtCenter: () => {
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const cx = (rect.width / 2 - view.tx) / view.scale;
+      const cy = (rect.height / 2 - view.ty) / view.scale;
+      editor.addNote(cx - 40, cy - 14);
+    },
     fit: () => {
       const rect = svgRef.current?.getBoundingClientRect();
       if (rect) editor.fitView(rect.width, rect.height);
+    },
+    fitSelection: () => {
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (rect) editor.fitSelection(rect.width, rect.height);
     },
   }));
 
@@ -101,6 +116,25 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
     if (wireEl) return; // vezetéket a saját onClick kezel
     movedRef.current = false;
     svgRef.current?.setPointerCapture(e.pointerId);
+
+    const noteEl = t.closest("[data-note]") as Element | null;
+    if (noteEl) {
+      const id = noteEl.getAttribute("data-note")!;
+      const note = project.notes.find((n) => n.id === id);
+      if (!note) return;
+      editor.snapshot();
+      editor.setSelection({ kind: "note", id });
+      const w = toWorld(e.clientX, e.clientY);
+      dragRef.current = {
+        mode: "note",
+        id,
+        swx: w.x,
+        swy: w.y,
+        ox: note.x,
+        oy: note.y,
+      };
+      return;
+    }
 
     const instEl = t.closest("[data-instance]") as Element | null;
     if (instEl) {
@@ -147,7 +181,8 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
       const dy = w.y - d.swy;
       if (Math.hypot(dx, dy) * view.scale > DRAG_THRESHOLD)
         movedRef.current = true;
-      editor.moveInstance(d.id, d.ox + dx, d.oy + dy);
+      if (d.mode === "note") editor.moveNote(d.id, d.ox + dx, d.oy + dy);
+      else editor.moveInstance(d.id, d.ox + dx, d.oy + dy);
     }
   };
 
@@ -179,13 +214,27 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
     editor.addInstance(defId, w.x - (def?.width ?? 80) / 2, w.y - 14);
   };
 
+  const ortho = editor.settings.ortho;
+  const obstacles = obstacleRects(project);
+
   // Függő vezeték előnézet-útvonala.
   let preview: string | null = null;
   if (pending && cursor) {
     const src = resolvePin(project, pending);
     if (src) {
       const p = pinWorldPos(src.instance, src.def, src.pin.id)!;
-      preview = wirePath(p, cursor, src.pin.side, undefined);
+      preview = routeWire(p, cursor, src.pin.side, undefined, ortho, obstacles);
+    }
+  }
+
+  // A kijelölt komponenshez csatlakozó vezetékek (kiemeléshez).
+  const selInstId =
+    selection?.kind === "instance" ? selection.id : null;
+  const connectedWires = new Set<string>();
+  if (selInstId) {
+    for (const w of project.wires) {
+      if (w.from.instanceId === selInstId || w.to.instanceId === selInstId)
+        connectedWires.add(w.id);
     }
   }
 
@@ -214,10 +263,10 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
             patternTransform={`translate(${gridOffX} ${gridOffY})`}
           >
             <circle
+              className="grid-dot"
               cx={0.5}
               cy={0.5}
               r={1}
-              fill="#cbd5e1"
               opacity={Math.min(1, view.scale)}
             />
           </pattern>
@@ -231,11 +280,23 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
               wire={w}
               project={project}
               selected={selection?.kind === "wire" && selection.id === w.id}
+              connected={connectedWires.has(w.id)}
+              ortho={ortho}
+              obstacles={obstacles}
               onSelect={(id) => editor.setSelection({ kind: "wire", id })}
             />
           ))}
 
           {preview && <path className="wire-preview" d={preview} />}
+
+          {project.notes.map((n) => (
+            <NoteView
+              key={n.id}
+              note={n}
+              selected={selection?.kind === "note" && selection.id === n.id}
+              onSelect={(id) => editor.setSelection({ kind: "note", id })}
+            />
+          ))}
 
           {project.instances.map((inst) => {
             const def = getDef(inst.defId);
@@ -295,6 +356,17 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         >
           ⤢
         </button>
+        {selection?.kind === "instance" && (
+          <button
+            title="Ráközelítés a kijelöltre (F)"
+            onClick={() => {
+              const rect = svgRef.current?.getBoundingClientRect();
+              if (rect) editor.fitSelection(rect.width, rect.height);
+            }}
+          >
+            ⊙
+          </button>
+        )}
       </div>
     </div>
   );

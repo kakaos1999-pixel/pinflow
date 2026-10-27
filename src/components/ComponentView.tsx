@@ -1,7 +1,7 @@
 // Egy lehelyezett komponens-példány rajza: doboz + címke-sáv + lábak.
 
 import type { ComponentDef, Instance, PinRef } from "../types";
-import { busColor } from "../lib/geometry";
+import { busColor, placedPins } from "../lib/geometry";
 
 interface Props {
   instance: Instance;
@@ -18,6 +18,7 @@ export function ComponentView({
   pending,
   onPinClick,
 }: Props) {
+  const pins = placedPins(def, instance);
   return (
     <g
       data-instance={instance.id}
@@ -40,13 +41,14 @@ export function ComponentView({
         {instance.label || def.name}
       </text>
 
-      {def.pins.map((pin) => {
+      {pins.map((pin) => {
         const isPending =
           pending &&
           pending.instanceId === instance.id &&
           pending.pinId === pin.id;
         const left = pin.side === "left";
         const lx = left ? pin.x + 10 : pin.x - 10;
+        const tip = [pin.name, pin.sub].filter(Boolean).join(" · ");
         return (
           <g
             key={pin.id}
@@ -57,6 +59,8 @@ export function ComponentView({
               onPinClick({ instanceId: instance.id, pinId: pin.id });
             }}
           >
+            {/* Natív SVG tooltip: láb teljes neve + alfunkció. */}
+            <title>{tip}</title>
             {/* Nagyobb, átlátszó kattintási felület. */}
             <circle cx={pin.x} cy={pin.y} r={10} className="pin-hit" />
             <circle

@@ -10,10 +10,20 @@ type Editor = ReturnType<typeof useEditor>;
 interface Props {
   editor: Editor;
   onFit: () => void;
+  onAddNote: () => void;
+  onToggleNetlist: () => void;
+  netlistOpen: boolean;
 }
 
-export function Toolbar({ editor, onFit }: Props) {
-  const { project } = editor;
+export function Toolbar({
+  editor,
+  onFit,
+  onAddNote,
+  onToggleNetlist,
+  netlistOpen,
+}: Props) {
+  const { project, settings } = editor;
+  const ortho = settings.ortho;
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,17 +68,17 @@ export function Toolbar({ editor, onFit }: Props) {
       </div>
 
       <div className="toolbar-group">
-        <button onClick={() => exportSvg(project)}>SVG</button>
+        <button onClick={() => exportSvg(project, ortho)}>SVG</button>
         <button
           onClick={() =>
-            exportPng(project).catch(() => alert("PNG export sikertelen."))
+            exportPng(project, ortho).catch(() => alert("PNG export sikertelen."))
           }
         >
           PNG
         </button>
         <button
           onClick={() =>
-            exportPdf(project).catch(() => alert("PDF export sikertelen."))
+            exportPdf(project, ortho).catch(() => alert("PDF export sikertelen."))
           }
         >
           PDF
@@ -77,10 +87,43 @@ export function Toolbar({ editor, onFit }: Props) {
 
       <div className="toolbar-group">
         <button onClick={editor.undo} title="Visszavonás (Ctrl/Cmd+Z)">
-          ↶ Vissza
+          ↶
+        </button>
+        <button onClick={editor.redo} title="Újra (Ctrl/Cmd+Shift+Z)">
+          ↷
         </button>
         <button onClick={onFit} title="Illesztés a tartalomhoz">
           ⤢ Illeszt
+        </button>
+        <button onClick={onAddNote} title="Szöveges jegyzet hozzáadása">
+          + Jegyzet
+        </button>
+      </div>
+
+      <div className="toolbar-group">
+        <button
+          className={settings.snap ? "toggle on" : "toggle"}
+          onClick={() => editor.setSetting("snap", !settings.snap)}
+          title="Rácshoz illesztés mozgatáskor"
+        >
+          ⌗ Rács
+        </button>
+        <button
+          className={ortho ? "toggle on" : "toggle"}
+          onClick={() => editor.setSetting("ortho", !ortho)}
+          title="Derékszögű vezeték-útvonal"
+        >
+          ⌐ Derékszög
+        </button>
+        <button
+          className={netlistOpen ? "toggle on" : "toggle"}
+          onClick={onToggleNetlist}
+          title="Netlista / alkatrészlista / ellenőrzés"
+        >
+          ☰ Netlista
+        </button>
+        <button onClick={editor.toggleTheme} title="Világos / sötét téma">
+          {settings.theme === "dark" ? "☀︎" : "☾"}
         </button>
       </div>
 

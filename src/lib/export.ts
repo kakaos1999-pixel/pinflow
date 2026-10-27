@@ -6,9 +6,12 @@ import { getDef } from "../data/components";
 import {
   busColor,
   contentBounds,
+  midPoint,
+  obstacleRects,
+  placedPins,
   pinWorldPos,
   resolvePin,
-  wirePath,
+  routeWire,
 } from "./geometry";
 import { downloadBlob, safeName } from "./storage";
 
@@ -26,7 +29,7 @@ function svgSize(project: Project): { vw: number; vh: number } {
 }
 
 /** Teljes, önálló SVG markup a projektből. */
-export function buildSvg(project: Project): string {
+export function buildSvg(project: Project, ortho = false): string {
   const b = contentBounds(project);
   const vw = b.width + PAD * 2;
   const vh = b.height + PAD * 2;
@@ -40,6 +43,8 @@ export function buildSvg(project: Project): string {
   parts.push(`<rect width="${vw}" height="${vh}" fill="#f8fafc"/>`);
   parts.push(`<g transform="translate(${ox} ${oy})">`);
 
+  const obstacles = obstacleRects(project);
+
   // Vezetékek (a komponensek alá).
   for (const w of project.wires) {
     const a = resolvePin(project, w.from);
@@ -49,8 +54,18 @@ export function buildSvg(project: Project): string {
     const pc = pinWorldPos(c.instance, c.def, c.pin.id)!;
     const color = w.color ?? busColor(a.pin.bus);
     parts.push(
-      `<path d="${wirePath(pa, pc, a.pin.side, c.pin.side)}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>`,
+      `<path d="${routeWire(pa, pc, a.pin.side, c.pin.side, ortho, obstacles)}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>`,
     );
+    if (w.label) {
+      const m = midPoint(pa, pc);
+      const halfW = w.label.length * 3.2 + 5;
+      parts.push(
+        `<rect x="${m.x - halfW}" y="${m.y - 9}" width="${halfW * 2}" height="16" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>`,
+      );
+      parts.push(
+        `<text x="${m.x}" y="${m.y + 2.5}" text-anchor="middle" font-size="10" font-weight="600" fill="#0f172a">${esc(w.label)}</text>`,
+      );
+    }
   }
 
   // Komponensek.
@@ -69,7 +84,7 @@ export function buildSvg(project: Project): string {
       `<text x="${def.width / 2}" y="18" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="600">${esc(inst.label || def.name)}</text>`,
     );
 
-    for (const pin of def.pins) {
+    for (const pin of placedPins(def, inst)) {
       const left = pin.side === "left";
       const lx = left ? pin.x + PIN_R + 5 : pin.x - PIN_R - 5;
       const anchor = left ? "start" : "end";
@@ -89,20 +104,39 @@ export function buildSvg(project: Project): string {
     parts.push(`</g>`);
   }
 
+  // Jegyzetek (a komponensek fölött).
+  for (const note of project.notes) {
+    const lines = (note.text || " ").split("\n");
+    const color = note.color ?? "#92400e";
+    const maxLen = Math.max(1, ...lines.map((l) => l.length));
+    const w = Math.min(360, Math.max(60, maxLen * 6.6 + 16));
+    const h = lines.length * 16 + 16;
+    parts.push(`<g transform="translate(${note.x} ${note.y})">`);
+    parts.push(
+      `<rect width="${w}" height="${h}" rx="6" fill="#fef9c3" stroke="#fde047" stroke-width="1"/>`,
+    );
+    lines.forEach((l, i) => {
+      parts.push(
+        `<text x="8" y="${20 + i * 16}" font-size="12" fill="${color}">${esc(l)}</text>`,
+      );
+    });
+    parts.push(`</g>`);
+  }
+
   parts.push(`</g></svg>`);
   return parts.join("");
 }
 
-export function exportSvg(project: Project): void {
-  const svg = buildSvg(project);
+export function exportSvg(project: Project, ortho = false): void {
+  const svg = buildSvg(project, ortho);
   const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
   downloadBlob(blob, `${safeName(project.name)}.svg`);
 }
 
 /** PNG export: az SVG-t vászonra rajzoljuk 2× felbontással. */
-export function exportPng(project: Project, scale = 2): Promise<void> {
+export function exportPng(project: Project, ortho = false, scale = 2): Promise<void> {
   return new Promise((resolve, reject) => {
-    const svg = buildSvg(project);
+    const svg = buildSvg(project, ortho);
     const { vw, vh } = svgSize(project);
 
     const url =
@@ -139,7 +173,7 @@ export function exportPng(project: Project, scale = 2): Promise<void> {
  * majd a svg2pdf.js vektorosan a jsPDF lapra rajzolja (nem raszter). A nehéz
  * könyvtárakat dinamikusan töltjük, hogy ne hízlalják az alap bundle-t.
  */
-export async function exportPdf(project: Project): Promise<void> {
+export async function exportPdf(project: Project, ortho = false): Promise<void> {
   const [{ jsPDF }, svg2pdfMod] = await Promise.all([
     import("jspdf"),
     import("svg2pdf.js"),
@@ -151,7 +185,7 @@ export async function exportPdf(project: Project): Promise<void> {
   // szöveg- és elrendezés-méretekhez.
   const holder = document.createElement("div");
   holder.style.cssText = "position:fixed;left:-99999px;top:0;";
-  holder.innerHTML = buildSvg(project);
+  holder.innerHTML = buildSvg(project, ortho);
   const svgEl = holder.firstElementChild as SVGSVGElement;
   document.body.appendChild(holder);
 
