@@ -517,8 +517,21 @@ export function routeWires(
       const pRail = aRail ? pa : pb;
       // A gerinc a sín-lábak oldalán kívül, minden azonos sínű vezetéknél közös x.
       const spineX = pRail.x + (railSide === "left" ? -1 : 1) * SPINE_GAP;
-      // A forrás a "b" oldalról a gerincre fut (cx=spineX), majd be a sín-lábig.
-      const pts = hvhPoints(pSrc, pRail, srcSide, railSide, spineX);
+      // Leágazás (tap): a forrástól a GERINCIG, a forrás magasságában beágazva.
+      // Ha a közvetlen vízszintes leágazás eszközt keresztezne, kerülő úton
+      // (fölötte/alatta) fut, majd a forrás magasságában tér vissza a gerincre
+      // — így nem vág át komponensen, de a becsatlakozás a forrásnál marad.
+      // A sín felőli stub-ot a railSide adja, mert a gerinc a sín-lábak oldalán van.
+      const J: P = { x: spineX, y: pSrc.y };
+      const tap =
+        avoidRoute(pSrc, J, srcSide, railSide, obstacles) ??
+        [pSrc, { x: pSrc.x + outDir(srcSide) * STUB, y: pSrc.y }, J];
+      // Gerinc (közös, szándékosan egymásra ül) + a sín-láb becsatlakozása.
+      const pts: P[] = [
+        ...tap,
+        { x: spineX, y: pRail.y },
+        { x: pRail.x, y: pRail.y },
+      ];
       // A trunk-vezetékek NEM mennek a sáv-széthúzáson át — a gerincük
       // szándékosan egymásra ül (egy közös vonal).
       map.set(w.id, polyPath(pts, !ortho));
