@@ -377,12 +377,19 @@ export function midPoint(
 
 const TRACK = 7; // sáv-összevonási tűrés (a tényleges sávtáv adaptív: lásd separateTracks)
 const CHANNEL = 26; // ennyin belül egy csatornának számít (összevonási tűrés)
+const SPINE_GAP = STUB; // a trunk-gerinc távolsága a síntől (így a gerinc a sín-csonkra ül)
 
-/** Derékszögű H-V-H útvonal pontlistája (a lábaktól kifelé, közös függőleges csatornán át). */
-function hvhPoints(a: P, b: P, aSide?: Side, bSide?: Side): P[] {
+/** Táp-/föld-sín komponens-e? (railgnd, rail6v, rail5v, rail3v3 — "Táp-sín" kategória) */
+function isRailDef(def: ComponentDef): boolean {
+  return def.id.startsWith("rail") || def.category === "Táp-sín";
+}
+
+/** Derékszögű H-V-H útvonal pontlistája (a lábaktól kifelé, közös függőleges csatornán át).
+ *  cxOverride: a középső függőleges csatorna x-e (trunk/gerinc kényszerítéséhez). */
+function hvhPoints(a: P, b: P, aSide?: Side, bSide?: Side, cxOverride?: number): P[] {
   const ax2 = a.x + outDir(aSide) * STUB;
   const bx2 = b.x + outDir(bSide) * STUB;
-  const cx = (ax2 + bx2) / 2;
+  const cx = cxOverride ?? (ax2 + bx2) / 2;
   return [
     { x: a.x, y: a.y },
     { x: ax2, y: a.y },
@@ -478,28 +485,54 @@ function separateTracks(lists: P[][], orient: "v" | "h"): void {
 }
 
 /** Minden vezeték útvonala EGYÜTT megtervezve, kötegelt (párhuzamos) elrendezéssel.
+ *  A táp-/föld-sínekre futó vezetékek KÖZÖS GERINCBE (trunk) állnak össze: a
+ *  sín mellett egyetlen függőleges gerincen futnak, és csak rövid leágazásokkal
+ *  (tap) csatlakoznak a forrás-lábhoz, illetve a sín lábaihoz. Így a sok
+ *  azonos-net (pl. GND) vezeték egyetlen vonallá fogható össze.
  *  Visszaad: vezeték-id → SVG path d. */
 export function routeWires(
   project: Project,
   obstacles: Rect[],
   ortho: boolean,
 ): Map<string, string> {
+  const map = new Map<string, string>();
   const ids: string[] = [];
   const lists: P[][] = [];
+
   for (const w of project.wires) {
     const a = resolvePin(project, w.from);
     const b = resolvePin(project, w.to);
     if (!a || !b) continue;
     const pa = pinWorldPos(a.instance, a.def, a.pin.id)!;
     const pb = pinWorldPos(b.instance, b.def, b.pin.id)!;
-    ids.push(w.id);
-    lists.push(baseRoute(pa, pb, a.pin.side, b.pin.side, obstacles));
+
+    const aRail = isRailDef(a.def);
+    const bRail = isRailDef(b.def);
+
+    if (aRail !== bRail) {
+      // Pontosan egy vég sín → TRUNK: a gerinc a sín mellett, közös x-en.
+      const srcSide = aRail ? b.pin.side : a.pin.side;
+      const railSide = aRail ? a.pin.side : b.pin.side;
+      const pSrc = aRail ? pb : pa;
+      const pRail = aRail ? pa : pb;
+      // A gerinc a sín-lábak oldalán kívül, minden azonos sínű vezetéknél közös x.
+      const spineX = pRail.x + (railSide === "left" ? -1 : 1) * SPINE_GAP;
+      // A forrás a "b" oldalról a gerincre fut (cx=spineX), majd be a sín-lábig.
+      const pts = hvhPoints(pSrc, pRail, srcSide, railSide, spineX);
+      // A trunk-vezetékek NEM mennek a sáv-széthúzáson át — a gerincük
+      // szándékosan egymásra ül (egy közös vonal).
+      map.set(w.id, polyPath(pts, !ortho));
+    } else {
+      ids.push(w.id);
+      lists.push(baseRoute(pa, pb, a.pin.side, b.pin.side, obstacles));
+    }
   }
-  // Előbb a függőleges csatornákat, majd a vízszintes sávokat húzzuk szét.
+
+  // A sima (nem-trunk) vezetékeknél előbb a függőleges csatornákat, majd a
+  // vízszintes sávokat húzzuk szét, hogy ne lapoljanak egymásra.
   separateTracks(lists, "v");
   separateTracks(lists, "h");
-
-  const map = new Map<string, string>();
   ids.forEach((id, idx) => map.set(id, polyPath(lists[idx], !ortho)));
+
   return map;
 }
