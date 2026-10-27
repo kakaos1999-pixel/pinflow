@@ -410,6 +410,19 @@ const BUCK_R: PinSpec[] = [
   { id: "OUT+", name: "OUT+", bus: "power" },
   { id: "OUT-", name: "OUT−", bus: "gnd" },
 ];
+// Gyula tápvédelem: fő-biztosíték, főkapcsoló, bulk kondi.
+const FUSE: PinSpec[] = [
+  { id: "IN", name: "IN", sub: "pakk +", bus: "power" },
+  { id: "OUT", name: "OUT", sub: "→ kapcsoló", bus: "power" },
+];
+const SWITCH_PIN: PinSpec[] = [
+  { id: "IN", name: "IN", sub: "biztosíték", bus: "power" },
+  { id: "OUT", name: "OUT", sub: "→ buckok", bus: "power" },
+];
+const CAP: PinSpec[] = [
+  { id: "+", name: "+", sub: "6V", bus: "power" },
+  { id: "-", name: "−", bus: "gnd" },
+];
 const MAX98357: PinSpec[] = [
   { id: "VIN", name: "VIN", sub: "5V", bus: "power" },
   { id: "GND", name: "GND", bus: "gnd" },
@@ -760,13 +773,46 @@ export const COMPONENTS: ComponentDef[] = [
   ),
   oneCol(
     {
+      id: "fuse",
+      name: "Fő-biztosíték",
+      category: "Védelem",
+      color: "#b45309",
+      note: "Fő olvadó-biztosíték a pakk + ágán: BMS P+ → fuse → főkapcsoló → buckok. Hexapodnál ~20-30A.",
+    },
+    FUSE,
+    120,
+  ),
+  oneCol(
+    {
+      id: "switch",
+      name: "Főkapcsoló",
+      category: "Kapcsoló",
+      color: "#475569",
+      note: "Fő be/ki a biztosíték után. IN a biztosítékról, OUT a buckok IN+-ára.",
+    },
+    SWITCH_PIN,
+    120,
+  ),
+  oneCol(
+    {
+      id: "cap",
+      name: "Bulk kondi",
+      category: "Passzív",
+      color: "#0f766e",
+      note: "Bulk elkó a 6V szervó-sínen (2200-4700µF). + a 6V sínre, − a GND sínre; a szervó-áramlökést pufferolja.",
+    },
+    CAP,
+    110,
+  ),
+  oneCol(
+    {
       id: "rail6v",
       name: "6V sín",
       category: "Táp-sín",
       color: "#15803d",
       note: "Szervó-tápsín (a 6V buck kimenete). Ide köt a 2 PCA9685 V+ és a bulk kondik.",
     },
-    rail("6V", "power", 8),
+    rail("6V", "power", 10),
     96,
   ),
   oneCol(
@@ -799,7 +845,7 @@ export const COMPONENTS: ComponentDef[] = [
       color: "#334155",
       note: "Közös föld (star-GND). Minden GND ide fut.",
     },
-    rail("GND", "gnd", 10),
+    rail("GND", "gnd", 12),
     96,
   ),
 ];
