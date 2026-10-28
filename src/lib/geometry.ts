@@ -381,7 +381,7 @@ export function midPoint(
 const GRID = 10; // rács-cella mérete (px)
 const CLEAR = 7; // minimum hézag a komponens-dobozoktól (cella-blokkolás)
 const TURN_PEN = 16; // forduló-büntetés (kevesebb sarok, tisztább vonalak)
-const CONGEST_PEN = 10; // már használt cellánkénti többletköltség (szétterítés)
+const CONGEST_PEN = 22; // már használt cellánkénti többletköltség (szétterítés)
 const EXIT = CLEAR + GRID; // a lábtól merőlegesen kifelé induló stub hossza
 
 const DC = [1, -1, 0, 0]; // irány → Δoszlop
@@ -393,7 +393,6 @@ interface Grid {
   ox: number;
   oy: number;
   block: Int32Array; // cellánként: hány komponens fedi (0 = szabad)
-  ranges: Map<string, [number, number, number, number]>; // instanceId → [c0,c1,r0,r1]
 }
 
 /** Rács felépítése: a komponens-dobozok (+ CLEAR) cellái blokkoltak. */
@@ -405,7 +404,6 @@ function buildGrid(project: Project): Grid {
   const cols = Math.ceil((b.width + 2 * PAD) / GRID) + 1;
   const rows = Math.ceil((b.height + 2 * PAD) / GRID) + 1;
   const block = new Int32Array(cols * rows);
-  const ranges = new Map<string, [number, number, number, number]>();
   const cl = (v: number, hi: number) => Math.max(0, Math.min(hi, v));
   for (const inst of project.instances) {
     const def = getDef(inst.defId);
@@ -414,21 +412,10 @@ function buildGrid(project: Project): Grid {
     const c1 = cl(Math.floor((inst.x + def.width + CLEAR - ox) / GRID), cols - 1);
     const r0 = cl(Math.ceil((inst.y - CLEAR - oy) / GRID), rows - 1);
     const r1 = cl(Math.floor((inst.y + def.height + CLEAR - oy) / GRID), rows - 1);
-    ranges.set(inst.id, [c0, c1, r0, r1]);
     for (let r = r0; r <= r1; r++)
       for (let c = c0; c <= c1; c++) block[r * cols + c]++;
   }
-  return { cols, rows, ox, oy, block, ranges };
-}
-
-/** Egy komponens celláinak blokk-számát módosítja (±1): így a vezeték a saját
- *  végkomponensét a tervezés idejére felszabadíthatja, majd visszateheti. */
-function setBlock(g: Grid, id: string, delta: number): void {
-  const rg = g.ranges.get(id);
-  if (!rg) return;
-  const [c0, c1, r0, r1] = rg;
-  for (let r = r0; r <= r1; r++)
-    for (let c = c0; c <= c1; c++) g.block[r * g.cols + c] += delta;
+  return { cols, rows, ox, oy, block };
 }
 
 /** Szabad-e (nem blokkolt) a cella? */
@@ -625,12 +612,9 @@ export function routeWires(project: Project, ortho: boolean): Map<string, string
     const pa = pinWorldPos(a.instance, a.def, a.pin.id)!;
     const pb = pinWorldPos(b.instance, b.def, b.pin.id)!;
 
-    // a két végkomponens cellái a tervezés idejére szabadok (a láb elérhető)
-    setBlock(grid, w.from.instanceId, -1);
-    if (w.to.instanceId !== w.from.instanceId) setBlock(grid, w.to.instanceId, -1);
-
-    // A* a láb MERŐLEGES kilépő-csomópontjából indul/érkezik (szabad láb esetén
-    // tiszta stub); bedobozolt lábnál a láb cellájából, és az A* kerül.
+    // A láb MERŐLEGES kilépő-csomópontjából tervezünk, ami a dobozon KÍVÜL van —
+    // a saját komponens is AKADÁLY marad, ezért a vezeték a chip FÖLÖTT/ALATT
+    // kerül, soha nem fut át alatta (a láb a saját oldalán lép ki).
     const start = pinNode(grid, pa.x, pa.y, outDir(a.pin.side));
     const goal = pinNode(grid, pb.x, pb.y, outDir(b.pin.side));
 
@@ -652,10 +636,6 @@ export function routeWires(project: Project, ortho: boolean): Map<string, string
     } else {
       pts = fallbackRoute(pa, pb, a.pin.side, b.pin.side);
     }
-
-    // a végkomponensek cellái újra akadállyá válnak a többi vezetéknek
-    setBlock(grid, w.from.instanceId, 1);
-    if (w.to.instanceId !== w.from.instanceId) setBlock(grid, w.to.instanceId, 1);
 
     map.set(w.id, polyPath(pts, !ortho));
   }
