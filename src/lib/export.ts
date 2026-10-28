@@ -7,7 +7,6 @@ import {
   busColor,
   contentBounds,
   midPoint,
-  obstacleRects,
   placedPins,
   pinWorldPos,
   resolvePin,
@@ -43,8 +42,7 @@ export function buildSvg(project: Project, ortho = false): string {
   parts.push(`<rect width="${vw}" height="${vh}" fill="#f8fafc"/>`);
   parts.push(`<g transform="translate(${ox} ${oy})">`);
 
-  const obstacles = obstacleRects(project);
-  const wirePaths = routeWires(project, obstacles, ortho);
+  const wirePaths = routeWires(project, ortho);
 
   // Vezetékek (a komponensek alá).
   for (const w of project.wires) {

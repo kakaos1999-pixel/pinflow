@@ -223,7 +223,7 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
   const ortho = editor.settings.ortho;
   const obstacles = obstacleRects(project);
   // Minden vezeték útvonalát EGYÜTT tervezzük (kötegelt, párhuzamos sávok).
-  const wirePaths = routeWires(project, obstacles, ortho);
+  const wirePaths = routeWires(project, ortho);
 
   // Függő vezeték előnézet-útvonala.
   let preview: string | null = null;

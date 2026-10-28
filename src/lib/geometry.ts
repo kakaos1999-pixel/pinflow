@@ -367,140 +367,239 @@ export function midPoint(
 }
 
 // ====================================================================
-// KÖTEG-ÚTVONALTERVEZÉS (cable-harness)
+// A* RÁCS-ÚTVONALTERVEZÉS (akadály-kerülő)
 // ====================================================================
 //
-// A vezetékeket NEM egyenként, hanem EGYÜTT tervezzük: derékszögű (Manhattan)
-// útvonalak, majd az egymásra eső párhuzamos szakaszokat külön "sávokba"
-// (track) húzzuk szét, hogy ne lapoljanak egymásra, hanem rendezett
-// kábelkötegként fussanak egymás mellett.
+// Minden vezetéket közös rácson, A*-gal tervezünk: a komponens-dobozok
+// (+ CLEAR hézag) blokkolt cellák, így a vezeték SOHA nem fut komponens
+// alatt, hanem a szabad folyosókon kerül. Forduló-büntetés (TURN_PEN) →
+// kevés sarkú, tiszta vonalak. "Congestion" (a már használt cellák
+// többletköltsége) → a párhuzamos vezetékek szétterülnek, nem fedik
+// egymást. A vezeték SAJÁT két végkomponense a tervezés idejére szabad,
+// hogy a láb-kilépés elérhető legyen.
 
-const TRACK = 7; // sáv-összevonási tűrés (a tényleges sávtáv adaptív: lásd separateTracks)
-const CHANNEL = 26; // ennyin belül egy csatornának számít (összevonási tűrés)
-const SPINE_GAP = STUB; // a trunk-gerinc távolsága a síntől (így a gerinc a sín-csonkra ül)
+const GRID = 10; // rács-cella mérete (px)
+const CLEAR = 7; // minimum hézag a komponens-dobozoktól (cella-blokkolás)
+const TURN_PEN = 16; // forduló-büntetés (kevesebb sarok, tisztább vonalak)
+const CONGEST_PEN = 10; // már használt cellánkénti többletköltség (szétterítés)
 
-/** Táp-/föld-sín komponens-e? (railgnd, rail6v, rail5v, rail3v3 — "Táp-sín" kategória) */
-function isRailDef(def: ComponentDef): boolean {
-  return def.id.startsWith("rail") || def.category === "Táp-sín";
+const DC = [1, -1, 0, 0]; // irány → Δoszlop
+const DR = [0, 0, 1, -1]; // irány → Δsor
+
+interface Grid {
+  cols: number;
+  rows: number;
+  ox: number;
+  oy: number;
+  block: Int32Array; // cellánként: hány komponens fedi (0 = szabad)
+  ranges: Map<string, [number, number, number, number]>; // instanceId → [c0,c1,r0,r1]
 }
 
-/** Derékszögű H-V-H útvonal pontlistája (a lábaktól kifelé, közös függőleges csatornán át).
- *  cxOverride: a középső függőleges csatorna x-e (trunk/gerinc kényszerítéséhez). */
-function hvhPoints(a: P, b: P, aSide?: Side, bSide?: Side, cxOverride?: number): P[] {
-  const ax2 = a.x + outDir(aSide) * STUB;
-  const bx2 = b.x + outDir(bSide) * STUB;
-  const cx = cxOverride ?? (ax2 + bx2) / 2;
-  return [
-    { x: a.x, y: a.y },
-    { x: ax2, y: a.y },
-    { x: cx, y: a.y },
-    { x: cx, y: b.y },
-    { x: bx2, y: b.y },
-    { x: b.x, y: b.y },
-  ];
-}
-
-/** Egy vezeték alap-útvonala (derékszögű): kerülő, ha eszközt keresztezne. */
-function baseRoute(a: P, b: P, aSide: Side | undefined, bSide: Side | undefined, obstacles: Rect[]): P[] {
-  if (obstacles.length) {
-    const infl = obstacles.map((r) => inflate(r, MARGIN));
-    if (!directClear(a, b, aSide, bSide, true, infl)) {
-      const r = avoidRoute(a, b, aSide, bSide, obstacles);
-      if (r) return r.map((p) => ({ ...p }));
-    }
+/** Rács felépítése: a komponens-dobozok (+ CLEAR) cellái blokkoltak. */
+function buildGrid(project: Project): Grid {
+  const b = contentBounds(project);
+  const PAD = 80;
+  const ox = b.x - PAD;
+  const oy = b.y - PAD;
+  const cols = Math.ceil((b.width + 2 * PAD) / GRID) + 1;
+  const rows = Math.ceil((b.height + 2 * PAD) / GRID) + 1;
+  const block = new Int32Array(cols * rows);
+  const ranges = new Map<string, [number, number, number, number]>();
+  const cl = (v: number, hi: number) => Math.max(0, Math.min(hi, v));
+  for (const inst of project.instances) {
+    const def = getDef(inst.defId);
+    if (!def) continue;
+    const c0 = cl(Math.ceil((inst.x - CLEAR - ox) / GRID), cols - 1);
+    const c1 = cl(Math.floor((inst.x + def.width + CLEAR - ox) / GRID), cols - 1);
+    const r0 = cl(Math.ceil((inst.y - CLEAR - oy) / GRID), rows - 1);
+    const r1 = cl(Math.floor((inst.y + def.height + CLEAR - oy) / GRID), rows - 1);
+    ranges.set(inst.id, [c0, c1, r0, r1]);
+    for (let r = r0; r <= r1; r++)
+      for (let c = c0; c <= c1; c++) block[r * cols + c]++;
   }
-  return hvhPoints(a, b, aSide, bSide);
+  return { cols, rows, ox, oy, block, ranges };
 }
 
-/** Az egymásra eső párhuzamos szakaszokat sávokba húzza szét.
- *  orient='v': függőleges szakaszokat x-ben, 'h': vízszinteseket y-ban tol el.
- *  Csak a "belső" (mindkét végén merőleges szomszéddal bíró) szakaszokat mozgatja,
- *  így a lábaktól kiinduló csonkok a helyükön maradnak. */
-function separateTracks(lists: P[][], orient: "v" | "h"): void {
-  type Seg = { li: number; i: number; pos: number; lo: number; hi: number };
-  const segs: Seg[] = [];
+/** Egy komponens celláinak blokk-számát módosítja (±1): így a vezeték a saját
+ *  végkomponensét a tervezés idejére felszabadíthatja, majd visszateheti. */
+function setBlock(g: Grid, id: string, delta: number): void {
+  const rg = g.ranges.get(id);
+  if (!rg) return;
+  const [c0, c1, r0, r1] = rg;
+  for (let r = r0; r <= r1; r++)
+    for (let c = c0; c <= c1; c++) g.block[r * g.cols + c] += delta;
+}
 
-  for (let li = 0; li < lists.length; li++) {
-    const pts = lists[li];
-    for (let i = 1; i < pts.length - 2; i++) {
-      const p = pts[i], q = pts[i + 1];
-      const isV = Math.abs(p.x - q.x) < 0.01 && Math.abs(p.y - q.y) >= 0.5;
-      const isH = Math.abs(p.y - q.y) < 0.01 && Math.abs(p.x - q.x) >= 0.5;
-      if (orient === "v" && isV) {
-        // a szomszédos szakaszok legyenek vízszintesek (merőlegesek)
-        if (Math.abs(pts[i - 1].y - p.y) > 0.01 || Math.abs(pts[i + 2].y - q.y) > 0.01) continue;
-        segs.push({ li, i, pos: p.x, lo: Math.min(p.y, q.y), hi: Math.max(p.y, q.y) });
-      } else if (orient === "h" && isH) {
-        if (Math.abs(pts[i - 1].x - p.x) > 0.01 || Math.abs(pts[i + 2].x - q.x) > 0.01) continue;
-        segs.push({ li, i, pos: p.y, lo: Math.min(p.x, q.x), hi: Math.max(p.x, q.x) });
+/** A megadott cellához legközelebbi SZABAD cella (előbb a kilépés irányában). */
+function freeNode(
+  g: Grid,
+  c: number,
+  r: number,
+  dir: number,
+): { c: number; r: number } | null {
+  const { cols, rows, block } = g;
+  const ok = (cc: number, rr: number) =>
+    cc >= 0 && cc < cols && rr >= 0 && rr < rows && block[rr * cols + cc] === 0;
+  if (ok(c, r)) return { c, r };
+  const sx = dir === 0 ? 1 : dir; // oszlop-lépés iránya a kilépéshez
+  for (let d = 1; d <= 40; d++) {
+    const cand: [number, number][] = [
+      [c + sx * d, r],
+      [c, r - d],
+      [c, r + d],
+      [c + sx * d, r - d],
+      [c + sx * d, r + d],
+      [c - sx * d, r],
+    ];
+    for (const [cc, rr] of cand) if (ok(cc, rr)) return { c: cc, r: rr };
+  }
+  return null;
+}
+
+interface AStarWork {
+  gVal: Float64Array;
+  gGen: Int32Array;
+  came: Int32Array;
+  gen: number;
+}
+
+/** A* a rácson (állapot = cella×irány, forduló- és congestion-költséggel). */
+function aStar(
+  g: Grid,
+  usage: Float64Array,
+  sc: number,
+  sr: number,
+  gc: number,
+  gr: number,
+  wk: AStarWork,
+): { c: number; r: number }[] | null {
+  const { cols, rows, block } = g;
+  const { gVal, gGen, came, gen } = wk;
+  const goalNode = gr * cols + gc;
+  const startNode = sr * cols + sc;
+  const hCost = (c: number, r: number) =>
+    (Math.abs(c - gc) + Math.abs(r - gr)) * GRID;
+
+  // bináris min-kupac (f, state)
+  const hf: number[] = [];
+  const hs: number[] = [];
+  const push = (f: number, s: number) => {
+    hf.push(f);
+    hs.push(s);
+    let i = hf.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (hf[p] <= hf[i]) break;
+      const tf = hf[p]; hf[p] = hf[i]; hf[i] = tf;
+      const ts = hs[p]; hs[p] = hs[i]; hs[i] = ts;
+      i = p;
+    }
+  };
+  const pop = (): number => {
+    const top = hs[0];
+    const n = hf.length - 1;
+    hf[0] = hf[n]; hs[0] = hs[n];
+    hf.pop(); hs.pop();
+    let i = 0;
+    const len = hf.length;
+    while (true) {
+      const l = 2 * i + 1, rc = 2 * i + 2;
+      let m = i;
+      if (l < len && hf[l] < hf[m]) m = l;
+      if (rc < len && hf[rc] < hf[m]) m = rc;
+      if (m === i) break;
+      const tf = hf[m]; hf[m] = hf[i]; hf[i] = tf;
+      const ts = hs[m]; hs[m] = hs[i]; hs[i] = ts;
+      i = m;
+    }
+    return top;
+  };
+
+  for (let d = 0; d < 4; d++) {
+    const s = startNode * 4 + d;
+    gGen[s] = gen; gVal[s] = 0; came[s] = -1;
+    push(hCost(sc, sr), s);
+  }
+
+  let goalState = -1;
+  while (hf.length) {
+    const s = pop();
+    const node = s >> 2;
+    if (node === goalNode) { goalState = s; break; }
+    const dir = s & 3;
+    const c = node % cols;
+    const r = (node - c) / cols;
+    const gs = gVal[s];
+    for (let nd = 0; nd < 4; nd++) {
+      const nc = c + DC[nd], nr = r + DR[nd];
+      if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+      const nn = nr * cols + nc;
+      if (block[nn] > 0) continue;
+      const ng =
+        gs + GRID + (nd !== dir ? TURN_PEN : 0) +
+        (usage[nn] > 0 ? CONGEST_PEN * usage[nn] : 0);
+      const ns = nn * 4 + nd;
+      if (gGen[ns] !== gen || ng < gVal[ns]) {
+        gGen[ns] = gen; gVal[ns] = ng; came[ns] = s;
+        push(ng + hCost(nc, nr), ns);
       }
     }
   }
+  if (goalState < 0) return null;
 
-  // Csatornánként (közel azonos pozíció) csoportosítunk, majd az átfedő
-  // szakaszokat sávokra bontjuk.
-  const buckets = new Map<number, Seg[]>();
-  for (const s of segs) {
-    const key = Math.round(s.pos / CHANNEL);
-    (buckets.get(key) ?? buckets.set(key, []).get(key)!).push(s);
+  const path: { c: number; r: number }[] = [];
+  let s = goalState;
+  while (s >= 0) {
+    const node = s >> 2;
+    const c = node % cols;
+    path.push({ c, r: (node - c) / cols });
+    s = came[s];
   }
-
-  for (const list of buckets.values()) {
-    list.sort((a, b) => a.lo - b.lo || a.hi - b.hi);
-    let group: Seg[] = [];
-    let groupHi = -Infinity;
-    const flush = () => {
-      if (group.length > 1) {
-        const n = group.length;
-        // Adaptív sávtáv: sok vezeték egy csatornában → szűkebb (5px),
-        // kevés → tágabb (10px), hogy a rajz ne nőjön túl szélesre, de olvasható maradjon.
-        const spacing = Math.max(5, Math.min(10, 12 - n));
-        group.forEach((s, k) => {
-          const off = (k - (n - 1) / 2) * spacing;
-          const pts = lists[s.li];
-          if (orient === "v") {
-            pts[s.i].x += off;
-            pts[s.i + 1].x += off;
-          } else {
-            pts[s.i].y += off;
-            pts[s.i + 1].y += off;
-          }
-        });
-      }
-      group = [];
-      groupHi = -Infinity;
-    };
-    for (const s of list) {
-      if (group.length === 0 || s.lo <= groupHi + TRACK) {
-        group.push(s);
-        groupHi = Math.max(groupHi, s.hi);
-      } else {
-        flush();
-        group.push(s);
-        groupHi = s.hi;
-      }
-    }
-    flush();
-  }
+  path.reverse();
+  return path;
 }
 
-/** Minden vezeték útvonala EGYÜTT megtervezve, kötegelt (párhuzamos) elrendezéssel.
- *  A táp-/föld-sínekre futó vezetékek KÖZÖS GERINCBE (trunk) állnak össze: a
- *  sín mellett egyetlen függőleges gerincen futnak, és csak rövid leágazásokkal
- *  (tap) csatlakoznak a forrás-lábhoz, illetve a sín lábaihoz. Így a sok
- *  azonos-net (pl. GND) vezeték egyetlen vonallá fogható össze.
+/** Derékszögű tartalék-útvonal, ha az A* nem talál utat (ritka). */
+function fallbackRoute(a: P, b: P, aSide?: Side, bSide?: Side): P[] {
+  const ax = a.x + outDir(aSide) * STUB;
+  const bx = b.x + outDir(bSide) * STUB;
+  const mx = (ax + bx) / 2;
+  return [a, { x: ax, y: a.y }, { x: mx, y: a.y }, { x: mx, y: b.y }, { x: bx, y: b.y }, b];
+}
+
+/** Útvonal-kulcs a memoizáláshoz (csak a routingot befolyásoló adatok). */
+function routeKey(project: Project, ortho: boolean): string {
+  let s = ortho ? "o" : "b";
+  for (const i of project.instances)
+    s += `|${i.id}:${Math.round(i.x)},${Math.round(i.y)}${i.mirror ? "m" : ""}:${i.defId}`;
+  s += "#";
+  for (const w of project.wires)
+    s += `|${w.id}:${w.from.instanceId}.${w.from.pinId}>${w.to.instanceId}.${w.to.pinId}`;
+  return s;
+}
+
+let memoKey = "";
+let memoResult = new Map<string, string>();
+
+/** Minden vezeték útvonala A* rács-tervezéssel: a vezetékek a komponens-dobozok
+ *  KÖZÖTT, a szabad folyosókon futnak (soha nem a dobozok alatt). A párhuzamos
+ *  vezetékek a congestion-költség miatt szétterülnek (nem fedik egymást). Az
+ *  eredményt memoizáljuk, hogy pan/zoom alatt ne tervezzünk újra.
  *  Visszaad: vezeték-id → SVG path d. */
-export function routeWires(
-  project: Project,
-  obstacles: Rect[],
-  ortho: boolean,
-): Map<string, string> {
+export function routeWires(project: Project, ortho: boolean): Map<string, string> {
+  const key = routeKey(project, ortho);
+  if (key === memoKey) return memoResult;
+
   const map = new Map<string, string>();
-  const ids: string[] = [];
-  const lists: P[][] = [];
-  // Trunk-vezetékeknél a leágazás UTÁNI rész (gerinc + sín-láb). Ezt a
-  // sáv-széthúzás NEM mozgatja, így a gerincek közös x-en maradnak (egy vonal).
-  const tails = new Map<string, P[]>();
+  const grid = buildGrid(project);
+  const { cols, rows, ox, oy } = grid;
+  const usage = new Float64Array(cols * rows);
+  const wk: AStarWork = {
+    gVal: new Float64Array(cols * rows * 4),
+    gGen: new Int32Array(cols * rows * 4),
+    came: new Int32Array(cols * rows * 4),
+    gen: 0,
+  };
 
   for (const w of project.wires) {
     const a = resolvePin(project, w.from);
@@ -509,52 +608,53 @@ export function routeWires(
     const pa = pinWorldPos(a.instance, a.def, a.pin.id)!;
     const pb = pinWorldPos(b.instance, b.def, b.pin.id)!;
 
-    const aRail = isRailDef(a.def);
-    const bRail = isRailDef(b.def);
+    // a két végkomponens cellái a tervezés idejére szabadok (a láb elérhető)
+    setBlock(grid, w.from.instanceId, -1);
+    if (w.to.instanceId !== w.from.instanceId) setBlock(grid, w.to.instanceId, -1);
 
-    if (aRail !== bRail) {
-      // Pontosan egy vég sín → TRUNK: a gerinc a sín mellett, közös x-en.
-      const srcSide = aRail ? b.pin.side : a.pin.side;
-      const railSide = aRail ? a.pin.side : b.pin.side;
-      const pSrc = aRail ? pb : pa;
-      const pRail = aRail ? pa : pb;
-      // A gerinc a sín-lábak oldalán kívül, minden azonos sínű vezetéknél közös x.
-      const spineX = pRail.x + (railSide === "left" ? -1 : 1) * SPINE_GAP;
-      // Leágazás (tap): a forrástól a GERINCIG, a forrás magasságában beágazva.
-      // Ha a közvetlen vízszintes leágazás eszközt keresztezne, kerülő úton
-      // (fölötte/alatta) fut, majd a forrás magasságában tér vissza a gerincre
-      // — így nem vág át komponensen, de a becsatlakozás a forrásnál marad.
-      // A sín felőli stub-ot a railSide adja, mert a gerinc a sín-lábak oldalán van.
-      const J: P = { x: spineX, y: pSrc.y };
-      const tap =
-        avoidRoute(pSrc, J, srcSide, railSide, obstacles) ??
-        [pSrc, { x: pSrc.x + outDir(srcSide) * STUB, y: pSrc.y }, J];
-      // A LEÁGAZÁST a sima vezetékekkel EGYÜTT húzzuk sávokba, hogy a párhuzamos
-      // (pl. több, egy irányba kerülő) leágazások se lapoljanak egymásra. A J
-      // (gerinc-becsatlakozás a forrás magasságában) nem mozdul, mert a
-      // separateTracks csak a belső szakaszokat tolja; a gerinc + sín-láb rész
-      // a J UTÁN jön, közös x-en, ezért a trunk-összevonás megmarad.
-      ids.push(w.id);
-      lists.push(tap);
-      tails.set(w.id, [
-        { x: spineX, y: pRail.y },
-        { x: pRail.x, y: pRail.y },
-      ]);
+    // A* a LÁB cellájából indul/érkezik (a saját komponens szabad, lásd fent):
+    // így az egész út akadály-tudatos (nincs ellenőrizetlen összekötő szakasz),
+    // és a "bedobozolt" lábak a saját komponensükön át szöknek ki — nem más alatt.
+    const start = freeNode(
+      grid,
+      Math.round((pa.x - ox) / GRID),
+      Math.round((pa.y - oy) / GRID),
+      outDir(a.pin.side),
+    );
+    const goal = freeNode(
+      grid,
+      Math.round((pb.x - ox) / GRID),
+      Math.round((pb.y - oy) / GRID),
+      outDir(b.pin.side),
+    );
+
+    wk.gen++;
+    const cells =
+      start && goal ? aStar(grid, usage, start.c, start.r, goal.c, goal.r, wk) : null;
+
+    let pts: P[];
+    if (cells && cells.length) {
+      for (const n of cells) usage[n.r * cols + n.c] += 1;
+      const wp = cells.map((n) => ({ x: ox + n.c * GRID, y: oy + n.r * GRID }));
+      pts = [
+        { x: pa.x, y: pa.y },
+        { x: wp[0].x, y: pa.y },
+        ...wp,
+        { x: wp[wp.length - 1].x, y: pb.y },
+        { x: pb.x, y: pb.y },
+      ];
     } else {
-      ids.push(w.id);
-      lists.push(baseRoute(pa, pb, a.pin.side, b.pin.side, obstacles));
+      pts = fallbackRoute(pa, pb, a.pin.side, b.pin.side);
     }
+
+    // a végkomponensek cellái újra akadállyá válnak a többi vezetéknek
+    setBlock(grid, w.from.instanceId, 1);
+    if (w.to.instanceId !== w.from.instanceId) setBlock(grid, w.to.instanceId, 1);
+
+    map.set(w.id, polyPath(pts, !ortho));
   }
 
-  // Előbb a függőleges csatornákat, majd a vízszintes sávokat húzzuk szét,
-  // hogy a vezetékek (a trunk-leágazásokat is beleértve) ne lapoljanak egymásra.
-  separateTracks(lists, "v");
-  separateTracks(lists, "h");
-  ids.forEach((id, idx) => {
-    const tail = tails.get(id);
-    const pts = tail ? [...lists[idx], ...tail] : lists[idx];
-    map.set(id, polyPath(pts, !ortho));
-  });
-
+  memoKey = key;
+  memoResult = map;
   return map;
 }
