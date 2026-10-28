@@ -382,6 +382,7 @@ const GRID = 10; // rács-cella mérete (px)
 const CLEAR = 7; // minimum hézag a komponens-dobozoktól (cella-blokkolás)
 const TURN_PEN = 16; // forduló-büntetés (kevesebb sarok, tisztább vonalak)
 const CONGEST_PEN = 10; // már használt cellánkénti többletköltség (szétterítés)
+const EXIT = CLEAR + GRID; // a lábtól merőlegesen kifelé induló stub hossza
 
 const DC = [1, -1, 0, 0]; // irány → Δoszlop
 const DR = [0, 0, 1, -1]; // irány → Δsor
@@ -428,6 +429,22 @@ function setBlock(g: Grid, id: string, delta: number): void {
   const [c0, c1, r0, r1] = rg;
   for (let r = r0; r <= r1; r++)
     for (let c = c0; c <= c1; c++) g.block[r * g.cols + c] += delta;
+}
+
+/** Szabad-e (nem blokkolt) a cella? */
+function cellFree(g: Grid, c: number, r: number): boolean {
+  return c >= 0 && c < g.cols && r >= 0 && r < g.rows && g.block[r * g.cols + c] === 0;
+}
+
+/** A láb be/kilépő rács-csomópontja: EXIT-nyire kifelé, a láb magasságában —
+ *  így tiszta MERŐLEGES stub indul/érkezik a lábnál. Ha ott blokkolt (bedobozolt
+ *  láb), a láb cellájából indulunk, és az A* kerüli ki az akadályt. */
+function pinNode(g: Grid, px: number, py: number, dir: number): { c: number; r: number } | null {
+  const row = Math.round((py - g.oy) / GRID);
+  const exitCol = Math.round((px + dir * EXIT - g.ox) / GRID);
+  if (cellFree(g, exitCol, row)) return { c: exitCol, r: row };
+  const pinCol = Math.round((px - g.ox) / GRID);
+  return freeNode(g, pinCol, row, dir);
 }
 
 /** A megadott cellához legközelebbi SZABAD cella (előbb a kilépés irányában). */
@@ -612,21 +629,10 @@ export function routeWires(project: Project, ortho: boolean): Map<string, string
     setBlock(grid, w.from.instanceId, -1);
     if (w.to.instanceId !== w.from.instanceId) setBlock(grid, w.to.instanceId, -1);
 
-    // A* a LÁB cellájából indul/érkezik (a saját komponens szabad, lásd fent):
-    // így az egész út akadály-tudatos (nincs ellenőrizetlen összekötő szakasz),
-    // és a "bedobozolt" lábak a saját komponensükön át szöknek ki — nem más alatt.
-    const start = freeNode(
-      grid,
-      Math.round((pa.x - ox) / GRID),
-      Math.round((pa.y - oy) / GRID),
-      outDir(a.pin.side),
-    );
-    const goal = freeNode(
-      grid,
-      Math.round((pb.x - ox) / GRID),
-      Math.round((pb.y - oy) / GRID),
-      outDir(b.pin.side),
-    );
+    // A* a láb MERŐLEGES kilépő-csomópontjából indul/érkezik (szabad láb esetén
+    // tiszta stub); bedobozolt lábnál a láb cellájából, és az A* kerül.
+    const start = pinNode(grid, pa.x, pa.y, outDir(a.pin.side));
+    const goal = pinNode(grid, pb.x, pb.y, outDir(b.pin.side));
 
     wk.gen++;
     const cells =
