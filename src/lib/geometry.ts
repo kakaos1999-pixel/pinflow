@@ -314,6 +314,39 @@ function simplify(points: P[]): P[] {
   return out;
 }
 
+/** Apró vissza-oda "nub"-ok eltávolítása: a rács-illesztésből adódó 1–5 px-es
+ *  kampók a lábnál (a törzs a rácsvonalig fut, majd pár px-et visszalép a láb
+ *  pontos magasságára). Csak a GRID-nél kisebb túllövésű, derékszögű
+ *  reverzió-bevágásokat kollabáljuk — a valódi (≥ 1 cellás) kerülők maradnak. */
+function deNub(points: P[]): P[] {
+  const p = points.slice();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 1; i + 2 < p.length; i++) {
+      const a = p[i - 1], b = p[i], c = p[i + 1], d = p[i + 2];
+      const hNotch =
+        a.y === b.y && b.x === c.x && c.y === d.y &&
+        Math.sign(b.x - a.x) === -Math.sign(d.x - c.x);
+      const vNotch =
+        a.x === b.x && b.y === c.y && c.x === d.x &&
+        Math.sign(b.y - a.y) === -Math.sign(d.y - c.y);
+      if (hNotch) {
+        const over = Math.min(Math.abs(b.x - a.x), Math.abs(d.x - c.x));
+        if (over < GRID && Math.abs(b.y - c.y) <= 2 * GRID) {
+          p.splice(i, 2, { x: a.x, y: d.y }); changed = true; break;
+        }
+      } else if (vNotch) {
+        const over = Math.min(Math.abs(b.y - a.y), Math.abs(d.y - c.y));
+        if (over < GRID && Math.abs(b.x - c.x) <= 2 * GRID) {
+          p.splice(i, 2, { x: a.x, y: d.y }); changed = true; break;
+        }
+      }
+    }
+  }
+  return p;
+}
+
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Pont-lista SVG útvonallá; rounded=true esetén lekerekített sarkokkal. */
@@ -466,10 +499,15 @@ interface AStarWork {
   gen: number;
 }
 
-/** A* a rácson (állapot = cella×irány, forduló- és congestion-költséggel). */
+/** A* a rácson (állapot = cella×irány, forduló- és congestion-költséggel).
+ *  A congestion IRÁNY-ÉRZÉKENY: a vízszintes lépés a cella VÍZSZINTES
+ *  foglaltságát (usageH) fizeti, a függőleges a FÜGGŐLEGESET (usageV). Így a
+ *  párhuzamosan futó vezetékek szétterülnek, de a MERŐLEGES keresztezés nincs
+ *  büntetve — a keresztező vonal nem kanyarodik ki, tisztán áthalad. */
 function aStar(
   g: Grid,
-  usage: Float64Array,
+  usageH: Float64Array,
+  usageV: Float64Array,
   sc: number,
   sr: number,
   gc: number,
@@ -538,9 +576,11 @@ function aStar(
       if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
       const nn = nr * cols + nc;
       if (block[nn] > 0) continue;
+      // nd 0/1 = vízszintes lépés → usageH; nd 2/3 = függőleges → usageV.
+      const par = nd < 2 ? usageH[nn] : usageV[nn];
       const ng =
         gs + GRID + (nd !== dir ? TURN_PEN : 0) +
-        (usage[nn] > 0 ? CONGEST_PEN * usage[nn] : 0);
+        (par > 0 ? CONGEST_PEN * par : 0);
       const ns = nn * 4 + nd;
       if (gGen[ns] !== gen || ng < gVal[ns]) {
         gGen[ns] = gen; gVal[ns] = ng; came[ns] = s;
@@ -596,7 +636,9 @@ export function routeWires(project: Project): Map<string, string> {
   const map = new Map<string, string>();
   const grid = buildGrid(project);
   const { cols, rows, ox, oy } = grid;
-  const usage = new Float64Array(cols * rows);
+  // Foglaltság irány szerint külön: vízszintes és függőleges átfutás.
+  const usageH = new Float64Array(cols * rows);
+  const usageV = new Float64Array(cols * rows);
   const wk: AStarWork = {
     gVal: new Float64Array(cols * rows * 4),
     gGen: new Int32Array(cols * rows * 4),
@@ -619,11 +661,33 @@ export function routeWires(project: Project): Map<string, string> {
 
     wk.gen++;
     const cells =
-      start && goal ? aStar(grid, usage, start.c, start.r, goal.c, goal.r, wk) : null;
+      start && goal ? aStar(grid, usageH, usageV, start.c, start.r, goal.c, goal.r, wk) : null;
 
     let pts: P[];
     if (cells && cells.length) {
-      for (const n of cells) usage[n.r * cols + n.c] += 1;
+      // Redundáns exit-csomópont levágása: ha a törzs (az út utolsó-előtti
+      // cellája) már a LÁB felőli oldalon, a láb SORÁBAN fut, akkor a kifelé
+      // ülő kilépő-csomópont egy vissza-oda kanyart (hurkot) okozna a lábnál.
+      // Ilyenkor eldobjuk, és a láb-stub közvetlenül a törzsből lép be.
+      const dirA = outDir(a.pin.side), dirB = outDir(b.pin.side);
+      while (
+        cells.length >= 2 && cells[0].r === cells[1].r &&
+        Math.sign(cells[0].c - cells[1].c) === Math.sign(dirA)
+      ) cells.shift();
+      while (cells.length >= 2) {
+        const gg = cells[cells.length - 1], tt = cells[cells.length - 2];
+        if (gg.r === tt.r && Math.sign(gg.c - tt.c) === Math.sign(dirB)) cells.pop();
+        else break;
+      }
+
+      // Irány-érzékeny foglaltság-jelölés az él mentén (párhuzamos szétterítés).
+      for (let i = 1; i < cells.length; i++) {
+        const p = cells[i - 1], n = cells[i];
+        const pidx = p.r * cols + p.c, nidx = n.r * cols + n.c;
+        if (p.r === n.r) { usageH[pidx] += 1; usageH[nidx] += 1; }
+        else { usageV[pidx] += 1; usageV[nidx] += 1; }
+      }
+
       const wp = cells.map((n) => ({ x: ox + n.c * GRID, y: oy + n.r * GRID }));
       pts = [
         { x: pa.x, y: pa.y },
@@ -636,7 +700,9 @@ export function routeWires(project: Project): Map<string, string> {
       pts = fallbackRoute(pa, pb, a.pin.side, b.pin.side);
     }
 
-    map.set(w.id, polyPath(pts, false));
+    // Előbb a kollineáris rács-pontokat vonjuk össze (simplify), hogy a deNub
+    // a VALÓDI sarkokat lássa a 4-pontos ablakában, majd a kampókat levágjuk.
+    map.set(w.id, polyPath(deNub(simplify(pts)), false));
   }
 
   memoKey = key;
