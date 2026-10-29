@@ -345,17 +345,16 @@ export function routeWire(
   b: P,
   aSide?: Side,
   bSide?: Side,
-  ortho?: boolean,
   obstacles?: Rect[],
 ): string {
   if (obstacles && obstacles.length) {
     const infl = obstacles.map((r) => inflate(r, MARGIN));
-    if (!directClear(a, b, aSide, bSide, !!ortho, infl)) {
+    if (!directClear(a, b, aSide, bSide, true, infl)) {
       const route = avoidRoute(a, b, aSide, bSide, obstacles);
-      if (route) return polyPath(route, !ortho);
+      if (route) return polyPath(route, false);
     }
   }
-  return ortho ? orthoPath(a, b, aSide, bSide) : wirePath(a, b, aSide, bSide);
+  return orthoPath(a, b, aSide, bSide);
 }
 
 /** Két pont felezőpontja — vezeték-címke elhelyezéséhez. */
@@ -572,8 +571,8 @@ function fallbackRoute(a: P, b: P, aSide?: Side, bSide?: Side): P[] {
 }
 
 /** Útvonal-kulcs a memoizáláshoz (csak a routingot befolyásoló adatok). */
-function routeKey(project: Project, ortho: boolean): string {
-  let s = ortho ? "o" : "b";
+function routeKey(project: Project): string {
+  let s = "";
   for (const i of project.instances)
     s += `|${i.id}:${Math.round(i.x)},${Math.round(i.y)}${i.mirror ? "m" : ""}:${i.defId}`;
   s += "#";
@@ -590,8 +589,8 @@ let memoResult = new Map<string, string>();
  *  vezetékek a congestion-költség miatt szétterülnek (nem fedik egymást). Az
  *  eredményt memoizáljuk, hogy pan/zoom alatt ne tervezzünk újra.
  *  Visszaad: vezeték-id → SVG path d. */
-export function routeWires(project: Project, ortho: boolean): Map<string, string> {
-  const key = routeKey(project, ortho);
+export function routeWires(project: Project): Map<string, string> {
+  const key = routeKey(project);
   if (key === memoKey) return memoResult;
 
   const map = new Map<string, string>();
@@ -637,7 +636,7 @@ export function routeWires(project: Project, ortho: boolean): Map<string, string
       pts = fallbackRoute(pa, pb, a.pin.side, b.pin.side);
     }
 
-    map.set(w.id, polyPath(pts, !ortho));
+    map.set(w.id, polyPath(pts, false));
   }
 
   memoKey = key;

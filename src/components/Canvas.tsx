@@ -220,10 +220,9 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
     editor.addInstance(defId, w.x - (def?.width ?? 80) / 2, w.y - 14);
   };
 
-  const ortho = editor.settings.ortho;
   const obstacles = obstacleRects(project);
-  // Minden vezeték útvonalát EGYÜTT tervezzük (kötegelt, párhuzamos sávok).
-  const wirePaths = routeWires(project, ortho);
+  // Minden vezeték útvonalát EGYÜTT tervezzük (A* rács, derékszögű).
+  const wirePaths = routeWires(project);
 
   // Függő vezeték előnézet-útvonala.
   let preview: string | null = null;
@@ -231,7 +230,7 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
     const src = resolvePin(project, pending);
     if (src) {
       const p = pinWorldPos(src.instance, src.def, src.pin.id)!;
-      preview = routeWire(p, cursor, src.pin.side, undefined, ortho, obstacles);
+      preview = routeWire(p, cursor, src.pin.side, undefined, obstacles);
     }
   }
 

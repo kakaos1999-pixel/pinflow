@@ -23,7 +23,6 @@ export function Toolbar({
   netlistOpen,
 }: Props) {
   const { project, settings } = editor;
-  const ortho = settings.ortho;
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,17 +67,17 @@ export function Toolbar({
       </div>
 
       <div className="toolbar-group">
-        <button onClick={() => exportSvg(project, ortho)}>SVG</button>
+        <button onClick={() => exportSvg(project)}>SVG</button>
         <button
           onClick={() =>
-            exportPng(project, ortho).catch(() => alert("PNG export sikertelen."))
+            exportPng(project).catch(() => alert("PNG export sikertelen."))
           }
         >
           PNG
         </button>
         <button
           onClick={() =>
-            exportPdf(project, ortho).catch(() => alert("PDF export sikertelen."))
+            exportPdf(project).catch(() => alert("PDF export sikertelen."))
           }
         >
           PDF
@@ -107,13 +106,6 @@ export function Toolbar({
           title="Rácshoz illesztés mozgatáskor"
         >
           ⌗ Rács
-        </button>
-        <button
-          className={ortho ? "toggle on" : "toggle"}
-          onClick={() => editor.setSetting("ortho", !ortho)}
-          title="Derékszögű vezeték-útvonal"
-        >
-          ⌐ Derékszög
         </button>
         <button
           className={netlistOpen ? "toggle on" : "toggle"}

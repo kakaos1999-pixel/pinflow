@@ -28,7 +28,7 @@ function svgSize(project: Project): { vw: number; vh: number } {
 }
 
 /** Teljes, önálló SVG markup a projektből. */
-export function buildSvg(project: Project, ortho = false): string {
+export function buildSvg(project: Project): string {
   const b = contentBounds(project);
   const vw = b.width + PAD * 2;
   const vh = b.height + PAD * 2;
@@ -42,7 +42,7 @@ export function buildSvg(project: Project, ortho = false): string {
   parts.push(`<rect width="${vw}" height="${vh}" fill="#f8fafc"/>`);
   parts.push(`<g transform="translate(${ox} ${oy})">`);
 
-  const wirePaths = routeWires(project, ortho);
+  const wirePaths = routeWires(project);
 
   // Vezetékek (a komponensek alá).
   for (const w of project.wires) {
@@ -126,16 +126,16 @@ export function buildSvg(project: Project, ortho = false): string {
   return parts.join("");
 }
 
-export function exportSvg(project: Project, ortho = false): void {
-  const svg = buildSvg(project, ortho);
+export function exportSvg(project: Project): void {
+  const svg = buildSvg(project);
   const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
   downloadBlob(blob, `${safeName(project.name)}.svg`);
 }
 
 /** PNG export: az SVG-t vászonra rajzoljuk 2× felbontással. */
-export function exportPng(project: Project, ortho = false, scale = 2): Promise<void> {
+export function exportPng(project: Project, scale = 2): Promise<void> {
   return new Promise((resolve, reject) => {
-    const svg = buildSvg(project, ortho);
+    const svg = buildSvg(project);
     const { vw, vh } = svgSize(project);
 
     const url =
@@ -172,7 +172,7 @@ export function exportPng(project: Project, ortho = false, scale = 2): Promise<v
  * majd a svg2pdf.js vektorosan a jsPDF lapra rajzolja (nem raszter). A nehéz
  * könyvtárakat dinamikusan töltjük, hogy ne hízlalják az alap bundle-t.
  */
-export async function exportPdf(project: Project, ortho = false): Promise<void> {
+export async function exportPdf(project: Project): Promise<void> {
   const [{ jsPDF }, svg2pdfMod] = await Promise.all([
     import("jspdf"),
     import("svg2pdf.js"),
@@ -184,7 +184,7 @@ export async function exportPdf(project: Project, ortho = false): Promise<void> 
   // szöveg- és elrendezés-méretekhez.
   const holder = document.createElement("div");
   holder.style.cssText = "position:fixed;left:-99999px;top:0;";
-  holder.innerHTML = buildSvg(project, ortho);
+  holder.innerHTML = buildSvg(project);
   const svgEl = holder.firstElementChild as SVGSVGElement;
   document.body.appendChild(holder);
 

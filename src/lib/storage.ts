@@ -84,16 +84,15 @@ export function downloadText(text: string, filename: string, mime = "text/plain"
   downloadBlob(new Blob([text], { type: `${mime};charset=utf-8` }), filename);
 }
 
-// ---- UI-beállítások (téma, snap, derékszögű útvonal) ----
+// ---- UI-beállítások (téma, snap) — a vezetékek mindig derékszögűek ----
 const SETTINGS_KEY = "pinflow:settings";
 
 export interface Settings {
   theme: "light" | "dark";
   snap: boolean;
-  ortho: boolean;
 }
 
-const DEFAULT_SETTINGS: Settings = { theme: "light", snap: true, ortho: false };
+const DEFAULT_SETTINGS: Settings = { theme: "light", snap: true };
 
 export function loadSettings(): Settings {
   try {
